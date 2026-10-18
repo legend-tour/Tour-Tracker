@@ -390,7 +390,7 @@
           doc.setTextColor(203, 213, 225);
           doc.text(`Période : ${label}`, 196, 14, { align: 'right' });
           doc.text(`Arrêté au : 18/10/2026`, 196, 20, { align: 'right' });
-          doc.text(`Collaborateur : Vincent Saidah (Chef de projet)`, 196, 26, { align: 'right' });
+          doc.text(`Projet : LEGEND TOUR`, 196, 26, { align: 'right' });
 
           // Cartouches KPI
           doc.setFillColor(248, 250, 252);
@@ -406,7 +406,7 @@
           doc.roundedRect(74, 44, 56, 22, 2, 2, 'FD');
           doc.setFontSize(8);
           doc.setTextColor(100, 116, 139);
-          doc.text('JOURS ACTIFS', 78, 51);
+          doc.text('JOURS TRAVAILLÉS', 78, 51);
           doc.setFontSize(14);
           doc.setTextColor(15, 23, 42);
           doc.text(`${new Set(list.map(e => e.date)).size} jours`, 78, 60);
@@ -456,20 +456,6 @@
             margin: { left: 14, right: 14 }
           });
 
-          // Signatures
-          const finalY = doc.lastAutoTable.finalY + 12;
-          if (finalY + 30 < 280) {
-            doc.roundedRect(14, finalY, 86, 24, 2, 2, 'S');
-            doc.setFontSize(8);
-            doc.setTextColor(71, 85, 105);
-            doc.text('Collaborateur : Vincent Saidah', 18, finalY + 6);
-            doc.text('Date et signature :', 18, finalY + 18);
-
-            doc.roundedRect(110, finalY, 86, 24, 2, 2, 'S');
-            doc.text('Direction Production : Legend Group', 114, finalY + 6);
-            doc.text('Date et signature :', 114, finalY + 18);
-          }
-
           doc.save(`recapitulatif-legend-tour-${period}.pdf`);
           setPdfModalOpen(false);
           showToast('PDF téléchargé avec succès !');
@@ -492,6 +478,7 @@
                   <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
                   <span className="text-slate-400">Total :</span>
                   <span className="font-bold text-orange-400 font-mono text-sm">{secondsToHM(totalSec)}</span>
+                  <span className="text-slate-300 font-semibold bg-slate-700/60 px-1.5 py-0.5 rounded">sur {activeDaysCount} jours</span>
                   <span className="text-slate-500">·</span>
                   <span className="text-slate-300">au 18/10/2026</span>
                 </div>
@@ -523,16 +510,18 @@
                       <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">Projet Officiel • LEGEND TOUR</span>
                     </div>
                     <h2 className="text-xl sm:text-2xl font-black text-white">Feuilles de Temps & Villes du Tour</h2>
-                    <div className="mt-2 inline-flex items-center gap-2 text-xs font-medium text-orange-200 bg-orange-950/60 border border-orange-500/30 rounded-xl px-3 py-1.5">
-                      <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
-                      <span>Total cumulé associé au <strong>dimanche 18 octobre 2026</strong> (Aujourd'hui)</span>
+                    <div className="mt-2 flex items-center gap-2 text-xs font-medium">
+                      <span className="inline-flex items-center gap-1.5 text-orange-200 bg-orange-950/60 border border-orange-500/30 rounded-xl px-3 py-1.5">
+                        <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
+                        Total cumulé arrêté au <strong>dimanche 18 octobre 2026</strong> (Aujourd'hui)
+                      </span>
                     </div>
                   </div>
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-slate-700/60 pt-3 sm:pt-0">
-                    <span className="text-xs text-slate-400">Total cumulé arrêté au 18/10</span>
+                    <span className="text-xs text-slate-400">Total cumulé au 18/10</span>
                     <div className="text-2xl sm:text-3xl font-black text-orange-400 font-mono tabular-nums">{secondsToHM(totalSec)}</div>
-                    <span className="text-[11px] text-slate-400 font-mono">{secondsToDecimal(totalSec)} heures certifiées</span>
+                    <span className="text-[11px] text-slate-400 font-mono mt-1">{secondsToDecimal(totalSec)} heures certifiées</span>
                   </div>
                 </div>
 
@@ -647,15 +636,15 @@
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Jours travaillés</span>
+                    <span className="text-[11px] text-slate-500 block mb-0.5">Jours travaillés</span>
                     <span className="text-xl font-black text-slate-900 font-mono">{activeDaysCount} jours</span>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Moyenne / jour actif</span>
+                    <span className="text-[11px] text-slate-500 block mb-0.5">Moyenne / jour actif</span>
                     <span className="text-xl font-black text-slate-900 font-mono">{secondsToHM(Math.round(totalSec / activeDaysCount))}</span>
                   </div>
                   <div className="col-span-2 sm:col-span-1 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block">Nombre de créneaux</span>
+                    <span className="text-[11px] text-slate-500 block mb-0.5">Nombre de créneaux</span>
                     <span className="text-xl font-black text-slate-900 font-mono">{entries.length} créneaux</span>
                   </div>
                 </div>

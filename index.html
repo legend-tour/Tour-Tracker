@@ -1,1 +1,881 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Legend Tour - Suivi du Temps</title>
+    <meta name="description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF." />
+    <meta property="og:title" content="Legend Tour - Suivi du Temps" />
+    <meta property="og:description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0f172a" />
 
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              brand: {
+                50: '#fff7ed',
+                100: '#ffedd5',
+                200: '#fed7aa',
+                500: '#f97316',
+                600: '#ea580c',
+                700: '#c2410c',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- React 18 & ReactDOM 18 CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+    <!-- Babel Standalone CDN -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- jsPDF & AutoTable CDN for Client-Side PDF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+      body {
+        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .font-mono, .tabular-nums {
+        font-family: 'JetBrains Mono', monospace;
+        font-variant-numeric: tabular-nums;
+      }
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      @media print {
+        body { background: white !important; }
+        .no-print { display: none !important; }
+      }
+    </style>
+  </head>
+  <body class="bg-slate-100 text-slate-900 antialiased selection:bg-orange-500/20 selection:text-orange-900 min-h-screen">
+    <div id="root"></div>
+
+    <!-- 100% SELF-CONTAINED APPLICATION CODE -->
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useRef } = React;
+
+      // --- TOUR SCHEDULE & CITIES (Conforme à votre demande) ---
+      const TOUR_SHOW_CITIES = {
+        '2026-10-06': { city: 'Paris → Bordeaux', isShowDay: false },
+        '2026-10-07': { city: 'Bordeaux', isShowDay: true },
+        '2026-10-08': { city: 'Nantes', isShowDay: true },
+        '2026-10-09': { city: 'Rennes', isShowDay: true },
+        '2026-10-10': { city: 'Transition / Rushs', isShowDay: false },
+        '2026-10-11': { city: 'Liévin', isShowDay: true },
+        '2026-10-12': { city: 'Rouen', isShowDay: true },
+        '2026-10-13': { city: 'Paris (Off / DDE)', isShowDay: false },
+        '2026-10-14': { city: 'Transit & Prépa', isShowDay: false },
+        '2026-10-15': { city: 'Dijon', isShowDay: true },
+        '2026-10-16': { city: 'Chambéry', isShowDay: true },
+        '2026-10-17': { city: 'Montpellier', isShowDay: true },
+        '2026-10-18': { city: 'Montpellier (Aujourd’hui)', isShowDay: false },
+      };
+
+      const getTourCity = (dateStr) => TOUR_SHOW_CITIES[dateStr] || null;
+
+      // --- INITIAL DATA EXACTEMENT ISSUE DES 10 CAPTURES D'ÉCRAN ---
+      const INITIAL_ENTRIES = [
+        // 17/10/2026 (Hier) - Montpellier - Total: 14:44:00
+        { id: '1', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'To do TR / flyers / prépa M&G', project: 'LEGEND TOUR', startTime: '19:16', endTime: '01:10', durationSeconds: 21240, category: 'Show & M&G', isBillable: true },
+        { id: '2', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'To do salle chef de projet', project: 'LEGEND TOUR', startTime: '15:10', endTime: '18:45', durationSeconds: 12900, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '3', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'Suite et fin trajet', project: 'LEGEND TOUR', startTime: '13:30', endTime: '15:10', durationSeconds: 6000, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '4', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'Trajet Chambéry - Montpellier', project: 'LEGEND TOUR', startTime: '10:15', endTime: '12:45', durationSeconds: 9000, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '5', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'Copie des rushs', project: 'LEGEND TOUR', startTime: '01:25', endTime: '02:30', durationSeconds: 3900, category: 'Technique & Rushs', isBillable: true },
+
+        // 16/10/2026 - Chambéry - Total: 13:17:00
+        { id: '6', date: '2026-10-16', city: 'Chambéry', isShowDay: true, title: 'Show + M&G + rangements', project: 'LEGEND TOUR', startTime: '19:34', endTime: '01:25', durationSeconds: 21060, category: 'Show & M&G', isBillable: true },
+        { id: '7', date: '2026-10-16', city: 'Chambéry', isShowDay: true, title: 'To do salle chef de projet', project: 'LEGEND TOUR', startTime: '16:00', endTime: '18:43', durationSeconds: 9780, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '8', date: '2026-10-16', city: 'Chambéry', isShowDay: true, title: 'Suite et fin trajet + partenaires Armani', project: 'LEGEND TOUR', startTime: '13:30', endTime: '14:38', durationSeconds: 4080, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '9', date: '2026-10-16', city: 'Chambéry', isShowDay: true, title: 'Trajet Dijon - Chambéry + mail + orga', project: 'LEGEND TOUR', startTime: '10:30', endTime: '13:00', durationSeconds: 9000, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '10', date: '2026-10-16', city: 'Chambéry', isShowDay: true, title: 'Copie des rushs', project: 'LEGEND TOUR', startTime: '01:30', endTime: '02:35', durationSeconds: 3900, category: 'Technique & Rushs', isBillable: true },
+
+        // 15/10/2026 - Dijon - Total: 11:02:00
+        { id: '11', date: '2026-10-15', city: 'Dijon', isShowDay: true, title: 'Show + M&G', project: 'LEGEND TOUR', startTime: '19:15', endTime: '01:22', durationSeconds: 22020, category: 'Show & M&G', isBillable: true },
+        { id: '12', date: '2026-10-15', city: 'Dijon', isShowDay: true, title: 'To do chef de projet - prépa show, salle & tech', project: 'LEGEND TOUR', startTime: '15:20', endTime: '18:40', durationSeconds: 12000, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '13', date: '2026-10-15', city: 'Dijon', isShowDay: true, title: 'Train Paris - Dijon + mails', project: 'LEGEND TOUR', startTime: '12:22', endTime: '13:57', durationSeconds: 5700, category: 'Trajet & Déplacement', isBillable: true },
+
+        // 13/10/2026 - Paris - Total: 03:06:00
+        { id: '14', date: '2026-10-13', city: 'Paris', isShowDay: false, title: 'Envoie des DDE + envoie rush à Morgan', project: 'LEGEND TOUR', startTime: '11:00', endTime: '14:06', durationSeconds: 11160, category: 'Technique & Rushs', isBillable: true },
+
+        // 12/10/2026 - Rouen - Total: 13:45:00
+        { id: '15', date: '2026-10-12', city: 'Rouen', isShowDay: true, title: 'Show + M&G + retour & copie des rushs', project: 'LEGEND TOUR', startTime: '19:15', endTime: '03:15', durationSeconds: 28800, category: 'Show & M&G', isBillable: true },
+        { id: '16', date: '2026-10-12', city: 'Rouen', isShowDay: true, title: 'Trajet + mise en place et To do PM', project: 'LEGEND TOUR', startTime: '13:00', endTime: '18:45', durationSeconds: 20700, category: 'Chef de projet & Régie', isBillable: true },
+
+        // 11/10/2026 - Liévin - Total: 20:18:00
+        { id: '17', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Retour Paris', project: 'LEGEND TOUR', startTime: '22:45', endTime: '02:18', durationSeconds: 12780, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '18', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Show + M&G + rangements', project: 'LEGEND TOUR', startTime: '18:05', endTime: '22:45', durationSeconds: 16800, category: 'Show & M&G', isBillable: true },
+        { id: '19', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Prépa show + M&G & To Do', project: 'LEGEND TOUR', startTime: '16:00', endTime: '17:45', durationSeconds: 6300, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '20', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Trajet + copie PRGM Rennes + orga', project: 'LEGEND TOUR', startTime: '12:00', endTime: '16:00', durationSeconds: 14400, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '21', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Trajet + copie rushs restant + mails', project: 'LEGEND TOUR', startTime: '09:35', endTime: '11:10', durationSeconds: 5700, category: 'Trajet & Déplacement', isBillable: true },
+        { id: '22', date: '2026-10-11', city: 'Liévin', isShowDay: true, title: 'Modification des vidéos IA Tigre', project: 'LEGEND TOUR', startTime: '00:15', endTime: '05:00', durationSeconds: 17100, category: 'Média & Vidéo', isBillable: true },
+
+        // 10/10/2026 - Transition - Total: 01:30:00
+        { id: '23', date: '2026-10-10', city: 'Transition / Rushs', isShowDay: false, title: 'Copie des rushs', project: 'LEGEND TOUR', startTime: '01:00', endTime: '02:30', durationSeconds: 5400, category: 'Technique & Rushs', isBillable: true },
+
+        // 09/10/2026 - Rennes - Total: 09:30:00
+        { id: '24', date: '2026-10-09', city: 'Rennes', isShowDay: true, title: 'Show + M&G', project: 'LEGEND TOUR', startTime: '20:00', endTime: '01:00', durationSeconds: 18000, category: 'Show & M&G', isBillable: true },
+        { id: '25', date: '2026-10-09', city: 'Rennes', isShowDay: true, title: 'Rennes - Mise en place et repérages', project: 'LEGEND TOUR', startTime: '15:00', endTime: '19:30', durationSeconds: 16200, category: 'Chef de projet & Régie', isBillable: true },
+
+        // 08/10/2026 - Nantes - Total: 09:07:00
+        { id: '26', date: '2026-10-08', city: 'Nantes', isShowDay: true, title: 'M&G', project: 'LEGEND TOUR', startTime: '22:45', endTime: '00:10', durationSeconds: 5100, category: 'Show & M&G', isBillable: true },
+        { id: '27', date: '2026-10-08', city: 'Nantes', isShowDay: true, title: 'Prépa du M&G', project: 'LEGEND TOUR', startTime: '21:00', endTime: '21:46', durationSeconds: 2760, category: 'Show & M&G', isBillable: true },
+        { id: '28', date: '2026-10-08', city: 'Nantes', isShowDay: true, title: 'To do chef de projet', project: 'LEGEND TOUR', startTime: '16:30', endTime: '18:30', durationSeconds: 7200, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '29', date: '2026-10-08', city: 'Nantes', isShowDay: true, title: 'Prépa show Nantes', project: 'LEGEND TOUR', startTime: '13:00', endTime: '15:45', durationSeconds: 9900, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '30', date: '2026-10-08', city: 'Nantes', isShowDay: true, title: 'Trajet BDX - Nantes', project: 'LEGEND TOUR', startTime: '10:10', endTime: '12:21', durationSeconds: 7860, category: 'Trajet & Déplacement', isBillable: true },
+
+        // 07/10/2026 - Bordeaux - Total: 15:30:00
+        { id: '31', date: '2026-10-07', city: 'Bordeaux', isShowDay: true, title: 'Show et régie soirée', project: 'LEGEND TOUR', startTime: '14:00', endTime: '01:30', durationSeconds: 41400, category: 'Show & M&G', isBillable: true },
+        { id: '32', date: '2026-10-07', city: 'Bordeaux', isShowDay: true, title: 'To do chef de projet / Prépa salle', project: 'LEGEND TOUR', startTime: '10:30', endTime: '13:30', durationSeconds: 10800, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '33', date: '2026-10-07', city: 'Bordeaux', isShowDay: true, title: 'Copie des rushs', project: 'LEGEND TOUR', startTime: '01:32', endTime: '02:32', durationSeconds: 3600, category: 'Technique & Rushs', isBillable: true },
+
+        // 06/10/2026 - Paris → Bordeaux - Total: 11:55:00
+        { id: '34', date: '2026-10-06', city: 'Paris → Bordeaux', isShowDay: false, title: 'Filage complet du show + prompteur', project: 'LEGEND TOUR', startTime: '20:30', endTime: '00:20', durationSeconds: 13800, category: 'Show & M&G', isBillable: true },
+        { id: '35', date: '2026-10-06', city: 'Paris → Bordeaux', isShowDay: false, title: 'Gestion des demandes de médias & presse', project: 'LEGEND TOUR', startTime: '15:30', endTime: '19:30', durationSeconds: 14400, category: 'Média & Vidéo', isBillable: true },
+        { id: '36', date: '2026-10-06', city: 'Paris → Bordeaux', isShowDay: false, title: 'Repet et repérage des lieux M&G etc', project: 'LEGEND TOUR', startTime: '14:30', endTime: '15:30', durationSeconds: 3600, category: 'Chef de projet & Régie', isBillable: true },
+        { id: '37', date: '2026-10-06', city: 'Paris → Bordeaux', isShowDay: false, title: 'Trajet Paris - BDX + emails', project: 'LEGEND TOUR', startTime: '10:10', endTime: '13:15', durationSeconds: 11100, category: 'Trajet & Déplacement', isBillable: true }
+      ];
+
+      // --- HELPERS TEMPS & DATES ---
+      function secondsToHHMMSS(s) {
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        const pad = n => n.toString().padStart(2, '0');
+        return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+      }
+
+      function secondsToHM(s) {
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        if (h === 0 && m === 0) return '0 min';
+        if (h === 0) return `${m} min`;
+        if (m === 0) return `${h}h`;
+        return `${h}h ${m.toString().padStart(2, '0')}m`;
+      }
+
+      function secondsToDecimal(s) {
+        return (Math.round((s / 3600) * 100) / 100).toFixed(2);
+      }
+
+      function calcIntervalSec(start, end) {
+        if (!start || !end) return 0;
+        const [sh, sm] = start.split(':').map(Number);
+        let [eh, em] = end.split(':').map(Number);
+        let startMin = sh * 60 + sm;
+        let endMin = eh * 60 + em;
+        if (endMin < startMin) endMin += 24 * 60; // Nuit / lendemain
+        return Math.max(0, (endMin - startMin) * 60);
+      }
+
+      function formatDayLabel(dateStr) {
+        if (dateStr === '2026-10-18') return "Aujourd'hui";
+        if (dateStr === '2026-10-17') return "Hier";
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        const wd = date.toLocaleDateString('fr-FR', { weekday: 'short' });
+        const day = d.toString().padStart(2, '0');
+        const mo = date.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
+        return `${wd}., ${day} ${mo}.`;
+      }
+
+      function formatFullDate(dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        const res = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        return res.charAt(0).toUpperCase() + res.slice(1);
+      }
+
+      // --- ICONES SVG PURS (Sans dépendance externe) ---
+      const Icons = {
+        Clock: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+        MapPin: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
+        Calendar: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>,
+        FileDown: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>,
+        Plus: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+        Search: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
+        Play: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+        Square: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>,
+        Edit: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>,
+        Copy: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+        Trash: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
+        X: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+        Check: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>,
+        Refresh: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+      };
+
+      // --- APPLICATION PRINCIPALE ---
+      function App() {
+        const [entries, setEntries] = useState(() => {
+          try {
+            const saved = localStorage.getItem('legend_tour_entries');
+            if (saved) return JSON.parse(saved);
+          } catch(e) {}
+          return INITIAL_ENTRIES;
+        });
+
+        // Sauvegarde auto
+        useEffect(() => {
+          localStorage.setItem('legend_tour_entries', JSON.stringify(entries));
+        }, [entries]);
+
+        // Filtres
+        const [selectedCity, setSelectedCity] = useState('all');
+        const [selectedWeek, setSelectedWeek] = useState('all');
+        const [search, setSearch] = useState('');
+        const [modalOpen, setModalOpen] = useState(false);
+        const [pdfModalOpen, setPdfModalOpen] = useState(false);
+        const [editEntry, setEditEntry] = useState(null);
+        const [toast, setToast] = useState(null);
+
+        // Chronomètre live
+        const [timerRunning, setTimerRunning] = useState(false);
+        const [timerTitle, setTimerTitle] = useState('');
+        const [timerSeconds, setTimerSeconds] = useState(0);
+
+        useEffect(() => {
+          let interval;
+          if (timerRunning) {
+            interval = setInterval(() => setTimerSeconds(s => s + 1), 1000);
+          }
+          return () => clearInterval(interval);
+        }, [timerRunning]);
+
+        const showToast = msg => {
+          setToast(msg);
+          setTimeout(() => setToast(null), 3000);
+        };
+
+        // Calculs totaux
+        const totalSec = useMemo(() => entries.reduce((a, b) => a + b.durationSeconds, 0), [entries]);
+        const activeDaysCount = useMemo(() => new Set(entries.map(e => e.date)).size, [entries]);
+
+        // Groupement par jour
+        const dayGroups = useMemo(() => {
+          const map = {};
+          entries.forEach(e => {
+            if (!map[e.date]) map[e.date] = [];
+            map[e.date].push(e);
+          });
+          return Object.keys(map).sort((a, b) => b.localeCompare(a)).map(date => {
+            const list = map[date];
+            const sec = list.reduce((a, b) => a + b.durationSeconds, 0);
+            const tourInfo = getTourCity(date);
+            return {
+              date,
+              formattedDate: formatDayLabel(date),
+              city: tourInfo?.city || list[0]?.city || 'Étape Tournée',
+              isShowDay: tourInfo?.isShowDay,
+              totalSeconds: sec,
+              entries: list.sort((a, b) => b.startTime.localeCompare(a.startTime))
+            };
+          });
+        }, [entries]);
+
+        // Filtrage des jours
+        const filteredDays = useMemo(() => {
+          return dayGroups.filter(d => {
+            if (selectedCity !== 'all' && d.city !== selectedCity) return false;
+            if (selectedWeek === 'S42' && (d.date < '2026-10-12' || d.date > '2026-10-18')) return false;
+            if (selectedWeek === 'S41' && (d.date < '2026-10-05' || d.date > '2026-10-11')) return false;
+            if (search.trim()) {
+              const q = search.toLowerCase();
+              const hasMatch = d.entries.some(e => e.title.toLowerCase().includes(q) || (e.city || '').toLowerCase().includes(q));
+              if (!hasMatch) return false;
+            }
+            return true;
+          });
+        }, [dayGroups, selectedCity, selectedWeek, search]);
+
+        // Actions
+        const handleSave = entryData => {
+          if (editEntry) {
+            setEntries(prev => prev.map(e => e.id === editEntry.id ? { ...e, ...entryData } : e));
+            showToast('Créneau mis à jour !');
+          } else {
+            const newId = 'e-' + Date.now();
+            setEntries(prev => [{ ...entryData, id: newId }, ...prev]);
+            showToast('Créneau ajouté !');
+          }
+          setModalOpen(false);
+          setEditEntry(null);
+        };
+
+        const handleDelete = id => {
+          if (confirm('Supprimer ce créneau ?')) {
+            setEntries(prev => prev.filter(e => e.id !== id));
+            showToast('Créneau supprimé');
+          }
+        };
+
+        const handleDuplicate = id => {
+          const item = entries.find(e => e.id === id);
+          if (item) {
+            setEntries(prev => [{ ...item, id: 'e-' + Date.now(), title: item.title + ' (copie)' }, ...prev]);
+            showToast('Créneau dupliqué !');
+          }
+        };
+
+        const handleReset = () => {
+          if (confirm('Restaurer les données initiales du Legend Tour ?')) {
+            setEntries(INITIAL_ENTRIES);
+            showToast('Données restaurées');
+          }
+        };
+
+        // Export PDF complet
+        const handleGeneratePdf = (period) => {
+          let list = entries;
+          let label = 'Tournée Complète';
+          if (period === 'S42') {
+            list = entries.filter(e => e.date >= '2026-10-12' && e.date <= '2026-10-18');
+            label = 'Semaine 42 (12 au 18 oct. 2026)';
+          } else if (period === 'S41') {
+            list = entries.filter(e => e.date >= '2026-10-05' && e.date <= '2026-10-11');
+            label = 'Semaine 41 (05 au 11 oct. 2026)';
+          } else if (period === 'hier') {
+            list = entries.filter(e => e.date === '2026-10-17');
+            label = 'Journée du 17/10/2026 (Montpellier)';
+          }
+
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const sumSec = list.reduce((a, b) => a + b.durationSeconds, 0);
+
+          // En-tête
+          doc.setFillColor(15, 23, 42);
+          doc.rect(0, 0, 210, 36, 'F');
+          doc.setFillColor(234, 88, 12);
+          doc.rect(0, 36, 210, 2.5, 'F');
+
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('LEGEND TOUR', 14, 14);
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(226, 232, 240);
+          doc.text('RÉCAPITULATIF DES HEURES TRAVAILLÉES PAR VILLE & DATE', 14, 21);
+
+          doc.setFontSize(8.5);
+          doc.setTextColor(251, 146, 60);
+          doc.text("Total cumulé arrêté au dimanche 18 octobre 2026 (Aujourd'hui)", 14, 28);
+
+          doc.setTextColor(203, 213, 225);
+          doc.text(`Période : ${label}`, 196, 14, { align: 'right' });
+          doc.text(`Arrêté au : 18/10/2026`, 196, 20, { align: 'right' });
+          doc.text(`Collaborateur : Vincent Saidah (Chef de projet)`, 196, 26, { align: 'right' });
+
+          // Cartouches KPI
+          doc.setFillColor(248, 250, 252);
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(14, 44, 56, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('TOTAL HEURES', 18, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(15, 23, 42);
+          doc.text(secondsToHM(sumSec), 18, 60);
+
+          doc.roundedRect(74, 44, 56, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('JOURS ACTIFS', 78, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(15, 23, 42);
+          doc.text(`${new Set(list.map(e => e.date)).size} jours`, 78, 60);
+
+          doc.roundedRect(134, 44, 62, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('TOTAL DÉCIMAL', 138, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(15, 23, 42);
+          doc.text(`${secondsToDecimal(sumSec)} h`, 138, 60);
+
+          // Bandeau villes
+          doc.setFillColor(255, 247, 237);
+          doc.setDrawColor(254, 215, 170);
+          doc.roundedRect(14, 71, 182, 10, 2, 2, 'FD');
+          doc.setFontSize(7.5);
+          doc.setTextColor(194, 65, 12);
+          doc.text('VILLES ÉTAPES :', 18, 77.5);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(67, 20, 7);
+          doc.text('Bordeaux (07/10) • Nantes (08/10) • Rennes (09/10) • Liévin (11/10) • Rouen (12/10) • Dijon (15/10) • Chambéry (16/10) • Montpellier (17/10)', 48, 77.5);
+
+          // Tableau
+          const rows = [...list].sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)).map(e => [
+            `${formatFullDate(e.date)}\n[${e.city || 'Tournée'}]`,
+            `${e.startTime} - ${e.endTime}`,
+            secondsToHHMMSS(e.durationSeconds),
+            e.title,
+            e.category || 'Général'
+          ]);
+
+          doc.autoTable({
+            startY: 86,
+            head: [['Date & Ville', 'Horaires', 'Durée', 'Description de la tâche', 'Catégorie']],
+            body: rows,
+            theme: 'striped',
+            headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 8 },
+            styles: { fontSize: 7.5, cellPadding: 2.2, textColor: [30, 41, 59] },
+            columnStyles: {
+              0: { cellWidth: 44, fontStyle: 'bold' },
+              1: { cellWidth: 24, halign: 'center' },
+              2: { cellWidth: 22, halign: 'right', fontStyle: 'bold' },
+              3: { cellWidth: 62 },
+              4: { cellWidth: 30 }
+            },
+            margin: { left: 14, right: 14 }
+          });
+
+          // Signatures
+          const finalY = doc.lastAutoTable.finalY + 12;
+          if (finalY + 30 < 280) {
+            doc.roundedRect(14, finalY, 86, 24, 2, 2, 'S');
+            doc.setFontSize(8);
+            doc.setTextColor(71, 85, 105);
+            doc.text('Collaborateur : Vincent Saidah', 18, finalY + 6);
+            doc.text('Date et signature :', 18, finalY + 18);
+
+            doc.roundedRect(110, finalY, 86, 24, 2, 2, 'S');
+            doc.text('Direction Production : Legend Group', 114, finalY + 6);
+            doc.text('Date et signature :', 114, finalY + 18);
+          }
+
+          doc.save(`recapitulatif-legend-tour-${period}.pdf`);
+          setPdfModalOpen(false);
+          showToast('PDF téléchargé avec succès !');
+        };
+
+        return (
+          <div className="min-h-screen flex flex-col pb-24 sm:pb-12">
+            {/* Header */}
+            <header className="sticky top-0 z-30 bg-slate-900 text-white shadow-md border-b border-slate-800">
+              <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-orange-600 flex items-center justify-center font-black text-white text-base">L</div>
+                  <div>
+                    <h1 className="text-base font-bold text-white leading-none">LEGEND TOUR</h1>
+                    <span className="text-[11px] text-slate-400">Suivi des temps</span>
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-800/90 rounded-xl border border-slate-700/80 text-xs">
+                  <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
+                  <span className="text-slate-400">Total :</span>
+                  <span className="font-bold text-orange-400 font-mono text-sm">{secondsToHM(totalSec)}</span>
+                  <span className="text-slate-500">·</span>
+                  <span className="text-slate-300">au 18/10/2026</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button onClick={handleReset} title="Restaurer données" className="p-2 text-slate-400 hover:text-white rounded-xl">
+                    <Icons.Refresh className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => setPdfModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700">
+                    <Icons.FileDown className="w-4 h-4 text-orange-400" />
+                    <span>Export PDF</span>
+                  </button>
+                  <button onClick={() => { setEditEntry(null); setModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                    <Icons.Plus className="w-4 h-4" />
+                    <span className="hidden xs:inline">Ajouter</span>
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {/* Main content */}
+            <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-5">
+              {/* Grand Bandeau Legend Tour */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-800 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                      <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">Projet Officiel • LEGEND TOUR</span>
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-black text-white">Feuilles de Temps & Villes du Tour</h2>
+                    <div className="mt-2 inline-flex items-center gap-2 text-xs font-medium text-orange-200 bg-orange-950/60 border border-orange-500/30 rounded-xl px-3 py-1.5">
+                      <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
+                      <span>Total cumulé associé au <strong>dimanche 18 octobre 2026</strong> (Aujourd'hui)</span>
+                    </div>
+                  </div>
+
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-slate-700/60 pt-3 sm:pt-0">
+                    <span className="text-xs text-slate-400">Total cumulé arrêté au 18/10</span>
+                    <div className="text-2xl sm:text-3xl font-black text-orange-400 font-mono tabular-nums">{secondsToHM(totalSec)}</div>
+                    <span className="text-[11px] text-slate-400 font-mono">{secondsToDecimal(totalSec)} heures certifiées</span>
+                  </div>
+                </div>
+
+                {/* Ruban des villes étapes */}
+                <div className="mt-4 pt-3.5 border-t border-slate-800/80">
+                  <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5 mb-2">
+                    <Icons.MapPin className="w-3 h-3 text-orange-400" />
+                    Villes de spectacle de la tournée :
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { d: '07/10', c: 'Bordeaux' },
+                      { d: '08/10', c: 'Nantes' },
+                      { d: '09/10', c: 'Rennes' },
+                      { d: '11/10', c: 'Liévin' },
+                      { d: '12/10', c: 'Rouen' },
+                      { d: '15/10', c: 'Dijon' },
+                      { d: '16/10', c: 'Chambéry' },
+                      { d: '17/10', c: 'Montpellier' },
+                    ].map(item => (
+                      <button
+                        key={item.c}
+                        onClick={() => setSelectedCity(selectedCity === item.c ? 'all' : item.c)}
+                        className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 font-medium ${
+                          selectedCity === item.c
+                            ? 'bg-orange-600 text-white border-orange-500 font-bold shadow-xs'
+                            : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        <span className="text-[10px] text-orange-300 font-mono">{item.d}</span>
+                        <span>{item.c}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Chronomètre direct */}
+              <div className="bg-white rounded-2xl p-3.5 shadow-xs border border-slate-200 mb-6 flex items-center justify-between gap-3">
+                {timerRunning ? (
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping" />
+                      <div>
+                        <span className="text-xs font-bold text-slate-900">{timerTitle || 'Activité en direct'}</span>
+                        <span className="text-[11px] text-orange-600 block">• LEGEND TOUR</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg font-bold font-mono">{secondsToHHMMSS(timerSeconds)}</span>
+                      <button
+                        onClick={() => {
+                          const now = new Date();
+                          const pad = n => n.toString().padStart(2, '0');
+                          const end = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                          const startD = new Date(Date.now() - timerSeconds * 1000);
+                          const start = `${pad(startD.getHours())}:${pad(startD.getMinutes())}`;
+                          handleSave({
+                            title: timerTitle || 'Tâche chronométrée',
+                            date: '2026-10-18',
+                            city: 'Montpellier',
+                            startTime: start,
+                            endTime: end,
+                            durationSeconds: Math.max(60, timerSeconds),
+                            project: 'LEGEND TOUR',
+                            category: 'Chef de projet & Régie',
+                            isBillable: true
+                          });
+                          setTimerRunning(false);
+                          setTimerSeconds(0);
+                          setTimerTitle('');
+                        }}
+                        className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+                      >
+                        Arrêter
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 w-full">
+                    <input
+                      type="text"
+                      value={timerTitle}
+                      onChange={e => setTimerTitle(e.target.value)}
+                      placeholder="Chronométrer une tâche en direct..."
+                      className="flex-1 px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                    />
+                    <button
+                      onClick={() => setTimerRunning(true)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors"
+                    >
+                      <Icons.Play className="w-3 h-3" />
+                      <span>Démarrer</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Synthèse hebdomadaire */}
+              <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 mb-6">
+                <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <Icons.Calendar className="w-4 h-4 text-orange-600" />
+                    <span className="text-xs font-bold uppercase text-slate-800">Synthèse Hebdomadaire</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => setSelectedWeek('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>Toutes</button>
+                    <button onClick={() => setSelectedWeek('S42')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'S42' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Sem. 42 (55h54)</button>
+                    <button onClick={() => setSelectedWeek('S41')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'S41' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Sem. 41 (67h50)</button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Jours travaillés</span>
+                    <span className="text-xl font-black text-slate-900 font-mono">{activeDaysCount} jours</span>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Moyenne / jour actif</span>
+                    <span className="text-xl font-black text-slate-900 font-mono">{secondsToHM(Math.round(totalSec / activeDaysCount))}</span>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <span className="text-[11px] text-slate-500 block">Nombre de créneaux</span>
+                    <span className="text-xl font-black text-slate-900 font-mono">{entries.length} créneaux</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barre de recherche et filtre */}
+              <div className="bg-white rounded-2xl p-3 shadow-xs border border-slate-100 mb-5 flex flex-col sm:flex-row gap-2.5">
+                <div className="relative flex-1">
+                  <Icons.Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Rechercher tâche, ville..."
+                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl">
+                    <option value="all">Toutes les villes</option>
+                    {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Paris'].map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => setPdfModalOpen(true)} className="px-3 py-2 text-xs font-bold bg-orange-50 text-orange-700 rounded-xl flex items-center gap-1.5 shrink-0">
+                    <Icons.FileDown className="w-3.5 h-3.5" />
+                    <span>Export PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Liste des journées */}
+              <div className="space-y-6">
+                {filteredDays.map(day => (
+                  <div key={day.date} className="bg-white/60 p-1 rounded-3xl">
+                    {/* Header de jour */}
+                    <div className="flex items-center justify-between px-2 pb-2.5 text-xs text-slate-500 border-b border-slate-200/60 mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-800 text-sm capitalize">{day.formattedDate}</span>
+                        {day.city && (
+                          <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
+                            <Icons.MapPin className="w-3 h-3 text-orange-600" />
+                            <span>{day.city}</span>
+                            {day.isShowDay && <span className="text-[10px] uppercase font-bold text-orange-600/80">· Spectacle</span>}
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-mono tabular-nums font-bold text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md text-sm">
+                        {secondsToHHMMSS(day.totalSeconds)}
+                      </div>
+                    </div>
+
+                    {/* Cartes du jour */}
+                    <div className="space-y-3">
+                      {day.entries.map(entry => (
+                        <div key={entry.id} className="bg-white rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 hover:border-slate-200">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 pr-2">
+                              <h4 className="text-[15px] font-semibold text-slate-900 leading-snug">{entry.title}</h4>
+                              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
+                                <span className="font-medium text-orange-600">• LEGEND TOUR</span>
+                                {entry.city && <><span className="text-slate-300">·</span><span>{entry.city}</span></>}
+                                {entry.category && <><span className="text-slate-300">·</span><span>{entry.category}</span></>}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-base sm:text-lg font-bold text-slate-900 font-mono tabular-nums">{secondsToHHMMSS(entry.durationSeconds)}</div>
+                              <div className="text-xs text-slate-400 font-mono mt-0.5">{entry.startTime} - {entry.endTime}</div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-400">
+                            <span className="flex items-center gap-1"><Icons.Clock className="w-3.5 h-3.5" /> Chronométré</span>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => { setEditEntry(entry); setModalOpen(true); }} className="p-1.5 hover:bg-slate-100 rounded-lg"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDuplicate(entry.id)} className="p-1.5 hover:bg-slate-100 rounded-lg"><Icons.Copy className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => handleDelete(entry.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </main>
+
+            {/* Bouton flottant mobile */}
+            <div className="fixed bottom-6 right-5 z-40 sm:hidden">
+              <button
+                onClick={() => { setEditEntry(null); setModalOpen(true); }}
+                className="w-14 h-14 rounded-full bg-orange-600 active:scale-95 text-white shadow-xl flex items-center justify-center"
+              >
+                <Icons.Plus className="w-7 h-7" />
+              </button>
+            </div>
+
+            {/* Modal de saisie / modification */}
+            {modalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+                <div className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-900">{editEntry ? 'Modifier le créneau' : 'Nouveau créneau'}</h3>
+                    <button onClick={() => setModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
+                  </div>
+                  <form onSubmit={e => {
+                    e.preventDefault();
+                    const form = e.target;
+                    const title = form.title.value.trim();
+                    const date = form.date.value;
+                    const city = form.city.value;
+                    const start = form.start.value;
+                    const end = form.end.value;
+                    const cat = form.category.value;
+                    const sec = calcIntervalSec(start, end);
+                    handleSave({ title, date, city, startTime: start, endTime: end, durationSeconds: sec, category: cat, project: 'LEGEND TOUR' });
+                  }} className="space-y-4 mt-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description</label>
+                      <input name="title" defaultValue={editEntry ? editEntry.title : ''} required placeholder="ex: Show + M&G" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {['Show + M&G + rangements', 'To do salle chef de projet', 'Copie des rushs', 'Trajet déplacement'].map(s => (
+                          <button key={s} type="button" onClick={e => e.target.closest('form').title.value = s} className="text-xs px-2 py-1 bg-slate-100 hover:bg-orange-50 rounded-lg text-slate-600">{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date</label>
+                        <input name="date" type="date" defaultValue={editEntry ? editEntry.date : '2026-10-18'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville</label>
+                        <input name="city" defaultValue={editEntry ? editEntry.city : 'Montpellier'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Début</label>
+                        <input name="start" type="time" defaultValue={editEntry ? editEntry.startTime : '14:00'} required className="w-full p-2 bg-white border border-slate-200 rounded-xl text-sm font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Fin</label>
+                        <input name="end" type="time" defaultValue={editEntry ? editEntry.endTime : '18:00'} required className="w-full p-2 bg-white border border-slate-200 rounded-xl text-sm font-mono" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Catégorie</label>
+                      <select name="category" defaultValue={editEntry ? editEntry.category : 'Chef de projet & Régie'} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                        <option value="Show & M&G">Show & M&G</option>
+                        <option value="Chef de projet & Régie">Chef de projet & Régie</option>
+                        <option value="Trajet & Déplacement">Trajet & Déplacement</option>
+                        <option value="Technique & Rushs">Technique & Rushs</option>
+                        <option value="Média & Vidéo">Média & Vidéo</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-3 text-sm font-semibold bg-slate-100 rounded-xl">Annuler</button>
+                      <button type="submit" className="flex-1 py-3 text-sm font-bold bg-orange-600 text-white rounded-xl shadow-md">Enregistrer</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal d'export PDF */}
+            {pdfModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+                <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h3 className="text-base font-bold text-slate-900">Générer le récapitulatif PDF</h3>
+                    <button onClick={() => setPdfModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="space-y-3 my-4">
+                    <button onClick={() => handleGeneratePdf('tout')} className="w-full p-3.5 text-left rounded-2xl border border-orange-500 bg-orange-50/50 hover:bg-orange-100/50 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Tournée complète (123h44)</span>
+                        <span className="text-xs text-slate-500">Toutes les dates & 8 villes</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+                    <button onClick={() => handleGeneratePdf('S42')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 42 (55h54)</span>
+                        <span className="text-xs text-slate-500">Rouen, Dijon, Chambéry, Montpellier</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+                    <button onClick={() => handleGeneratePdf('S41')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 41 (67h50)</span>
+                        <span className="text-xs text-slate-500">Bordeaux, Nantes, Rennes, Liévin</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+                    <button onClick={() => handleGeneratePdf('hier')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Hier (17/10 - 14h44)</span>
+                        <span className="text-xs text-slate-500">Montpellier</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+                  </div>
+                  <button onClick={() => setPdfModalOpen(false)} className="w-full py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl">Fermer</button>
+                </div>
+              </div>
+            )}
+
+            {/* Notification Toast */}
+            {toast && (
+              <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2">
+                <Icons.Check className="w-4 h-4 text-emerald-400" />
+                <span>{toast}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>

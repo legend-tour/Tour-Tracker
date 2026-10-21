@@ -95,6 +95,15 @@
         '2026-10-16': { city: 'Chambéry', isShowDay: true },
         '2026-10-17': { city: 'Montpellier', isShowDay: true },
         '2026-10-18': { city: 'Montpellier', isShowDay: false },
+        '2026-10-21': { city: 'Strasbourg', isShowDay: true },
+        '2026-10-22': { city: 'Metz', isShowDay: true },
+        '2026-10-23': { city: 'Bruxelles', isShowDay: true },
+        '2026-10-24': { city: 'Bruxelles', isShowDay: true },
+        '2026-10-27': { city: 'Nice', isShowDay: true },
+        '2026-10-28': { city: 'Aix en Provence', isShowDay: true },
+        '2026-10-29': { city: 'Lyon-Décines', isShowDay: true },
+        '2026-11-14': { city: 'Paris', isShowDay: true },
+        '2026-11-15': { city: 'Paris', isShowDay: true },
       };
 
       const getTourCity = (dateStr) => TOUR_SHOW_CITIES[dateStr] || null;
@@ -383,6 +392,63 @@
         const [editExpense, setEditExpense] = useState(null);
         const [toast, setToast] = useState(null);
 
+        // Date et Ville synchronisées automatiquement
+        const [formDate, setFormDate] = useState('2026-10-22');
+        const [formCity, setFormCity] = useState('Metz');
+        const [expenseDate, setExpenseDate] = useState('2026-10-22');
+        const [expenseCity, setExpenseCity] = useState('Metz');
+
+        const latestEntryDate = useMemo(() => {
+          if (!entries || entries.length === 0) return '2026-10-22';
+          return [...entries].sort((a,b) => b.date.localeCompare(a.date))[0].date;
+        }, [entries]);
+
+        const openAddModal = (datePref) => {
+          const targetDate = datePref || '2026-10-22';
+          const info = getTourCity(targetDate);
+          setEditEntry(null);
+          setFormDate(targetDate);
+          setFormCity(info ? info.city : 'Metz');
+          setModalOpen(true);
+        };
+
+        const openEditModal = (entry) => {
+          setEditEntry(entry);
+          setFormDate(entry.date);
+          setFormCity(entry.city || getTourCity(entry.date)?.city || 'Metz');
+          setModalOpen(true);
+        };
+
+        const handleModalDateChange = (newDate) => {
+          setFormDate(newDate);
+          const info = getTourCity(newDate);
+          if (info && info.city) {
+            setFormCity(info.city);
+          }
+        };
+
+        const openAddExpenseModal = () => {
+          setEditExpense(null);
+          setExpenseDate('2026-10-22');
+          setExpenseCity(getTourCity('2026-10-22')?.city || 'Metz');
+          setExpenseModalOpen(true);
+        };
+
+        const openEditExpenseModal = (exp) => {
+          setEditExpense(exp);
+          setExpenseDate(exp.date);
+          setExpenseCity(exp.city || getTourCity(exp.date)?.city || 'Metz');
+          setExpenseModalOpen(true);
+        };
+
+        const handleExpenseDateChange = (newDate) => {
+          setExpenseDate(newDate);
+          const info = getTourCity(newDate);
+          if (info && info.city) {
+            setExpenseCity(info.city);
+          }
+        };
+
         // Chronomètre live
         const [timerRunning, setTimerRunning] = useState(false);
         const [timerTitle, setTimerTitle] = useState('');
@@ -574,12 +640,24 @@
         const handleGeneratePdf = (period) => {
           let list = entries;
           let label = 'Tournée Complète';
-          if (period === 'S42') {
+          if (period === 'S43') {
+            list = entries.filter(e => e.date >= '2026-10-19' && e.date <= '2026-10-25');
+            label = 'Semaine 43 (19 au 25 oct. 2026 : Strasbourg, Metz, Bruxelles)';
+          } else if (period === 'S44') {
+            list = entries.filter(e => e.date >= '2026-10-26' && e.date <= '2026-11-01');
+            label = 'Semaine 44 (26 oct. au 01 nov. 2026 : Nice, Aix, Lyon)';
+          } else if (period === 'S46') {
+            list = entries.filter(e => e.date >= '2026-11-09' && e.date <= '2026-11-15');
+            label = 'Semaine 46 (09 au 15 nov. 2026 : Paris)';
+          } else if (period === 'S42') {
             list = entries.filter(e => e.date >= '2026-10-12' && e.date <= '2026-10-18');
-            label = 'Semaine 42 (12 au 18 oct. 2026)';
+            label = 'Semaine 42 (12 au 18 oct. 2026 : Rouen, Dijon, Chambéry, Montpellier)';
           } else if (period === 'S41') {
             list = entries.filter(e => e.date >= '2026-10-05' && e.date <= '2026-10-11');
-            label = 'Semaine 41 (05 au 11 oct. 2026)';
+            label = 'Semaine 41 (05 au 11 oct. 2026 : Bordeaux, Nantes, Rennes, Liévin)';
+          } else if (period === '22-10') {
+            list = entries.filter(e => e.date === '2026-10-22');
+            label = 'Journée du 22/10/2026 (Metz)';
           } else if (period === '17-10') {
             list = entries.filter(e => e.date === '2026-10-17');
             label = 'Journée du 17/10/2026 (Montpellier)';
@@ -588,6 +666,8 @@
           const { jsPDF } = window.jspdf;
           const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
           const sumSec = list.reduce((a, b) => a + b.durationSeconds, 0);
+
+          const latestDate = entries.length > 0 ? [...entries].sort((a,b) => b.date.localeCompare(a.date))[0].date : '2026-10-22';
 
           // En-tête
           doc.setFillColor(15, 23, 42);
@@ -607,11 +687,11 @@
 
           doc.setFontSize(8.5);
           doc.setTextColor(251, 146, 60);
-          doc.text("Total cumulé arrêté au dimanche 18 octobre 2026", 14, 28);
+          doc.text(`Total cumulé arrêté au ${formatFullDate(latestDate)}`, 14, 28);
 
           doc.setTextColor(203, 213, 225);
           doc.text(`Période : ${label}`, 196, 14, { align: 'right' });
-          doc.text(`Arrêté au : 18/10/2026`, 196, 20, { align: 'right' });
+          doc.text(`Arrêté au : ${latestDate.split('-').reverse().join('/')}`, 196, 20, { align: 'right' });
           doc.text(`Projet : LEGEND TOUR`, 196, 26, { align: 'right' });
 
           // Cartouches KPI
@@ -650,7 +730,7 @@
           doc.text('VILLES ÉTAPES :', 18, 77.5);
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(67, 20, 7);
-          doc.text('Bordeaux (07/10) • Nantes (08/10) • Rennes (09/10) • Liévin (11/10) • Rouen (12/10) • Dijon (15/10) • Chambéry (16/10) • Montpellier (17/10)', 48, 77.5);
+          doc.text('Bordeaux (07/10) • Nantes (08/10) • Rennes (09/10) • Liévin (11/10) • Rouen (12/10) • Dijon (15/10) • Chambéry (16/10) • Montpellier (17/10) • Strasbourg (21/10) • Metz (22/10) • Bruxelles (23-24/10) • Nice (27/10) • Aix (28/10) • Lyon (29/10) • Paris (14-15/11)', 48, 77.5);
 
           // Tableau
           const rows = [...list].sort((a,b) => a.date.localeCompare(b.date) || a.startTime.localeCompare(b.startTime)).map(e => [
@@ -842,7 +922,7 @@
                         <Icons.FileDown className="w-4 h-4 text-orange-400" />
                         <span>PDF Heures</span>
                       </button>
-                      <button onClick={() => { setEditEntry(null); setModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                      <button onClick={() => openAddModal()} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
                         <Icons.Plus className="w-4 h-4" />
                         <span className="hidden xs:inline">Ajouter Heures</span>
                       </button>
@@ -853,7 +933,7 @@
                         <Icons.FileDown className="w-4 h-4 text-orange-400" />
                         <span>PDF Frais</span>
                       </button>
-                      <button onClick={() => { setEditExpense(null); setExpenseModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                      <button onClick={() => openAddExpenseModal()} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
                         <Icons.Plus className="w-4 h-4" />
                         <span className="hidden xs:inline">Ajouter Frais</span>
                       </button>
@@ -879,14 +959,14 @@
                     <div className="mt-2 flex items-center gap-2 text-xs font-medium">
                       <span className="inline-flex items-center gap-1.5 text-orange-200 bg-orange-950/60 border border-orange-500/30 rounded-xl px-3 py-1.5">
                         <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
-                        Total cumulé arrêté au <strong>dimanche 18 octobre 2026</strong>
+                        Total cumulé arrêté au <strong>{formatFullDate(latestEntryDate)}</strong>
                       </span>
                     </div>
                   </div>
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-slate-700/60 pt-3 sm:pt-0">
                     <span className="text-xs text-slate-400">
-                      {activeTab === 'timesheet' ? 'Total arrêté au 18/10/2026' : 'Total Frais à rembourser'}
+                      {activeTab === 'timesheet' ? `Total arrêté au ${latestEntryDate.split('-').reverse().join('/')}` : 'Total Frais à rembourser'}
                     </span>
                     <div className="text-2xl sm:text-3xl font-black text-orange-400 font-mono tabular-nums">
                       {activeTab === 'timesheet'
@@ -917,9 +997,18 @@
                       { d: '15/10', c: 'Dijon' },
                       { d: '16/10', c: 'Chambéry' },
                       { d: '17/10', c: 'Montpellier' },
+                      { d: '21/10', c: 'Strasbourg' },
+                      { d: '22/10', c: 'Metz' },
+                      { d: '23/10', c: 'Bruxelles' },
+                      { d: '24/10', c: 'Bruxelles' },
+                      { d: '27/10', c: 'Nice' },
+                      { d: '28/10', c: 'Aix en Provence' },
+                      { d: '29/10', c: 'Lyon-Décines' },
+                      { d: '14/11', c: 'Paris' },
+                      { d: '15/11', c: 'Paris' },
                     ].map(item => (
                       <button
-                        key={item.c}
+                        key={`${item.c}-${item.d}`}
                         onClick={() => setSelectedCity(selectedCity === item.c ? 'all' : item.c)}
                         className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 font-medium ${
                           selectedCity === item.c
@@ -958,11 +1047,12 @@
                               const end = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
                               const startD = new Date(Date.now() - timerSeconds * 1000);
                               const start = `${pad(startD.getHours())}:${pad(startD.getMinutes())}`;
-                              const todayStr = '2026-10-18';
+                              const targetDate = '2026-10-22';
+                              const info = getTourCity(targetDate);
                               handleSave({
                                 title: timerTitle || 'Tâche chronométrée',
-                                date: todayStr,
-                                city: 'Montpellier',
+                                date: targetDate,
+                                city: info ? info.city : 'Metz',
                                 startTime: start,
                                 endTime: end,
                                 durationSeconds: Math.max(60, timerSeconds),
@@ -1062,8 +1152,8 @@
                     </div>
                     <div className="flex gap-2">
                       <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl">
-                        <option value="all">Toutes les villes</option>
-                        {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Paris'].map(c => (
+                        <option value="all">Toutes les villes ({selectedCity === 'all' ? 'Toutes' : selectedCity})</option>
+                        {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Strasbourg', 'Metz', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris'].map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
@@ -1102,8 +1192,19 @@
                                 </span>
                               )}
                             </div>
-                            <div className="font-mono tabular-nums font-bold text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md text-sm">
-                              {secondsToHHMMSS(day.totalSeconds)}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openAddModal(day.date)}
+                                className="flex items-center gap-1 text-[11px] font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded-md border border-orange-200 transition-colors"
+                                title={`Ajouter un créneau au ${day.date}`}
+                              >
+                                <Icons.Plus className="w-3 h-3" />
+                                <span>Ajouter</span>
+                              </button>
+                              <div className="font-mono tabular-nums font-bold text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md text-sm">
+                                {secondsToHHMMSS(day.totalSeconds)}
+                              </div>
                             </div>
                           </div>
 
@@ -1132,7 +1233,7 @@
                                     <span>Date : {entry.date}</span>
                                   </span>
                                   <div className="flex items-center gap-1">
-                                    <button onClick={() => { setEditEntry(entry); setModalOpen(true); }} title="Modifier" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => openEditModal(entry)} title="Modifier" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><Icons.Edit className="w-3.5 h-3.5" /></button>
                                     <button onClick={() => handleDuplicate(entry.id)} title="Dupliquer" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><Icons.Copy className="w-3.5 h-3.5" /></button>
                                     <button onClick={() => handleDelete(entry.id)} title="Supprimer" className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-slate-400"><Icons.Trash className="w-3.5 h-3.5" /></button>
                                   </div>
@@ -1202,7 +1303,7 @@
                   <div className="flex justify-between items-center bg-white p-3.5 rounded-2xl border border-slate-200">
                     <span className="text-xs font-medium text-slate-600">Ajouter un reçu de course VTC ou un forfait per-diem :</span>
                     <button
-                      onClick={() => { setEditExpense(null); setExpenseModalOpen(true); }}
+                      onClick={() => openAddExpenseModal()}
                       className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs"
                     >
                       <Icons.Plus className="w-4 h-4" />
@@ -1258,7 +1359,7 @@
                             <div className="text-right shrink-0">
                               <div className="text-lg font-black text-slate-900 font-mono">{Number(exp.amount).toFixed(2)} €</div>
                               <div className="flex items-center gap-1 mt-2 justify-end">
-                                <button onClick={() => { setEditExpense(exp); setExpenseModalOpen(true); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => openEditExpenseModal(exp)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><Icons.Edit className="w-3.5 h-3.5" /></button>
                                 <button onClick={() => handleDeleteExpense(exp.id)} className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg"><Icons.Trash className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
@@ -1276,11 +1377,9 @@
               <button
                 onClick={() => {
                   if (activeTab === 'timesheet') {
-                    setEditEntry(null);
-                    setModalOpen(true);
+                    openAddModal();
                   } else {
-                    setEditExpense(null);
-                    setExpenseModalOpen(true);
+                    openAddExpenseModal();
                   }
                 }}
                 className="w-14 h-14 rounded-full bg-orange-600 active:scale-95 text-white shadow-xl flex items-center justify-center"
@@ -1324,38 +1423,78 @@
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date exacte</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-bold text-slate-700 uppercase">Date exacte</label>
+                        {getTourCity(formDate) && (
+                          <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
+                            <Icons.MapPin className="w-3 h-3 text-orange-600" />
+                            <span>{getTourCity(formDate).city}</span>
+                            {getTourCity(formDate).isShowDay && <span className="text-[9px] uppercase font-black text-orange-700">· Spectacle</span>}
+                          </span>
+                        )}
+                      </div>
                       <input
                         name="date"
                         type="date"
                         id="form-entry-date"
-                        defaultValue={editEntry ? editEntry.date : '2026-10-18'}
+                        value={formDate}
+                        onChange={e => handleModalDateChange(e.target.value)}
                         required
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
                       />
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        <span className="text-[11px] text-slate-400 mr-1 flex items-center">Dates rapides :</span>
-                        {['2026-10-18', '2026-10-17', '2026-10-16', '2026-10-15', '2026-10-12', '2026-10-11', '2026-10-09', '2026-10-08', '2026-10-07'].map(d => (
-                          <button
-                            key={d}
-                            type="button"
-                            onClick={e => {
-                              const input = document.getElementById('form-entry-date');
-                              if (input) input.value = d;
-                            }}
-                            className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-orange-100 text-slate-700 rounded-md font-mono"
-                          >
-                            {d.slice(8, 10)}/{d.slice(5, 7)}
-                          </button>
-                        ))}
+                      <div className="mt-2">
+                        <span className="text-[11px] text-slate-500 font-medium block mb-1">Dates de tournée (cliquez pour remplir date & ville) :</span>
+                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                          {[
+                            { d: '2026-10-22', c: 'Metz' },
+                            { d: '2026-10-21', c: 'Strasbourg' },
+                            { d: '2026-10-23', c: 'Bruxelles' },
+                            { d: '2026-10-24', c: 'Bruxelles' },
+                            { d: '2026-10-27', c: 'Nice' },
+                            { d: '2026-10-28', c: 'Aix en Provence' },
+                            { d: '2026-10-29', c: 'Lyon-Décines' },
+                            { d: '2026-11-14', c: 'Paris' },
+                            { d: '2026-11-15', c: 'Paris' },
+                            { d: '2026-10-18', c: 'Montpellier' },
+                            { d: '2026-10-17', c: 'Montpellier' },
+                            { d: '2026-10-16', c: 'Chambéry' },
+                            { d: '2026-10-15', c: 'Dijon' },
+                            { d: '2026-10-12', c: 'Rouen' },
+                            { d: '2026-10-11', c: 'Liévin' },
+                            { d: '2026-10-09', c: 'Rennes' },
+                            { d: '2026-10-08', c: 'Nantes' },
+                            { d: '2026-10-07', c: 'Bordeaux' },
+                          ].map(item => (
+                            <button
+                              key={`${item.d}-${item.c}`}
+                              type="button"
+                              onClick={() => handleModalDateChange(item.d)}
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-mono border transition-all flex items-center gap-1 ${
+                                formDate === item.d
+                                  ? 'bg-orange-600 text-white font-bold border-orange-500 shadow-xs'
+                                  : 'bg-slate-100 hover:bg-orange-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              <span>{item.d.slice(8, 10)}/{item.d.slice(5, 7)}</span>
+                              <span className="font-sans font-semibold">{item.c}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville de la tournée</label>
-                        <select name="city" defaultValue={editEntry ? editEntry.city : 'Montpellier'} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                          {['Montpellier', 'Chambéry', 'Dijon', 'Paris', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Ville de la tournée</label>
+                        </div>
+                        <select
+                          name="city"
+                          value={formCity}
+                          onChange={e => setFormCity(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
+                        >
+                          {['Metz', 'Strasbourg', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris', 'Montpellier', 'Chambéry', 'Dijon', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
                             <option key={c} value={c}>{c}</option>
                           ))}
                         </select>
@@ -1456,12 +1595,74 @@
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date exacte</label>
-                        <input name="date" type="date" defaultValue={editExpense ? editExpense.date : '2026-10-18'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono" />
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700 uppercase">Date</label>
+                          {getTourCity(expenseDate) && (
+                            <span className="text-[10px] font-bold text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
+                              {getTourCity(expenseDate).city}
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          name="date"
+                          type="date"
+                          value={expenseDate}
+                          onChange={e => handleExpenseDateChange(e.target.value)}
+                          required
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-900"
+                        />
+                        <div className="mt-2">
+                          <span className="text-[10px] text-slate-500 font-medium block mb-1">Dates de tournée :</span>
+                          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                            {[
+                              { d: '2026-10-22', c: 'Metz' },
+                              { d: '2026-10-21', c: 'Strasbourg' },
+                              { d: '2026-10-23', c: 'Bruxelles' },
+                              { d: '2026-10-24', c: 'Bruxelles' },
+                              { d: '2026-10-27', c: 'Nice' },
+                              { d: '2026-10-28', c: 'Aix en Provence' },
+                              { d: '2026-10-29', c: 'Lyon-Décines' },
+                              { d: '2026-11-14', c: 'Paris' },
+                              { d: '2026-11-15', c: 'Paris' },
+                              { d: '2026-10-18', c: 'Montpellier' },
+                              { d: '2026-10-17', c: 'Montpellier' },
+                              { d: '2026-10-16', c: 'Chambéry' },
+                              { d: '2026-10-15', c: 'Dijon' },
+                              { d: '2026-10-12', c: 'Rouen' },
+                              { d: '2026-10-11', c: 'Liévin' },
+                              { d: '2026-10-09', c: 'Rennes' },
+                              { d: '2026-10-08', c: 'Nantes' },
+                              { d: '2026-10-07', c: 'Bordeaux' },
+                            ].map(item => (
+                              <button
+                                key={`exp-${item.d}-${item.c}`}
+                                type="button"
+                                onClick={() => handleExpenseDateChange(item.d)}
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono border transition-all flex items-center gap-1 ${
+                                  expenseDate === item.d
+                                    ? 'bg-orange-600 text-white font-bold border-orange-500 shadow-xs'
+                                    : 'bg-slate-100 hover:bg-orange-50 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                <span>{item.d.slice(8, 10)}/{item.d.slice(5, 7)}</span>
+                                <span className="font-sans font-medium">{item.c}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville</label>
-                        <input name="city" defaultValue={editExpense ? editExpense.city : 'Montpellier'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                        <select
+                          name="city"
+                          value={expenseCity}
+                          onChange={e => setExpenseCity(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
+                        >
+                          {['Metz', 'Strasbourg', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris', 'Montpellier', 'Chambéry', 'Dijon', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
@@ -1495,31 +1696,66 @@
                     <h3 className="text-base font-bold text-slate-900">Générer le récapitulatif PDF</h3>
                     <button onClick={() => setPdfModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
                   </div>
-                  <div className="space-y-3 my-4">
+                  <div className="space-y-2.5 my-4 max-h-[60vh] overflow-y-auto pr-1">
                     <button onClick={() => handleGeneratePdf('tout')} className="w-full p-3.5 text-left rounded-2xl border border-orange-500 bg-orange-50/50 hover:bg-orange-100/50 flex justify-between items-center">
                       <div>
-                        <span className="font-bold text-slate-900 block text-sm">Tournée complète (123h44)</span>
-                        <span className="text-xs text-slate-500">Toutes les dates & 8 villes de tournée</span>
+                        <span className="font-bold text-slate-900 block text-sm">Tournée complète</span>
+                        <span className="text-xs text-slate-500">Toutes les dates & villes de la tournée</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
-                    <button onClick={() => handleGeneratePdf('S42')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+
+                    <button onClick={() => handleGeneratePdf('S43')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
                       <div>
-                        <span className="font-bold text-slate-900 block text-sm">Semaine 42 (55h54)</span>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 43 (19 au 25 oct. 2026)</span>
+                        <span className="text-xs text-slate-500">Strasbourg, Metz, Bruxelles</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+
+                    <button onClick={() => handleGeneratePdf('S44')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 44 (26 oct. au 01 nov. 2026)</span>
+                        <span className="text-xs text-slate-500">Nice, Aix en Provence, Lyon-Décines</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+
+                    <button onClick={() => handleGeneratePdf('S46')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 46 (09 au 15 nov. 2026)</span>
+                        <span className="text-xs text-slate-500">Paris (Accor Arena)</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+
+                    <button onClick={() => handleGeneratePdf('S42')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 42 (12 au 18 oct. 2026)</span>
                         <span className="text-xs text-slate-500">Rouen, Dijon, Chambéry, Montpellier</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
-                    <button onClick={() => handleGeneratePdf('S41')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+
+                    <button onClick={() => handleGeneratePdf('S41')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
                       <div>
-                        <span className="font-bold text-slate-900 block text-sm">Semaine 41 (67h50)</span>
+                        <span className="font-bold text-slate-900 block text-sm">Semaine 41 (05 au 11 oct. 2026)</span>
                         <span className="text-xs text-slate-500">Bordeaux, Nantes, Rennes, Liévin</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
-                    <button onClick={() => handleGeneratePdf('17-10')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+
+                    <button onClick={() => handleGeneratePdf('22-10')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
                       <div>
-                        <span className="font-bold text-slate-900 block text-sm">Journée du 17/10/2026 (14h44)</span>
+                        <span className="font-bold text-slate-900 block text-sm">Journée du 22/10/2026</span>
+                        <span className="text-xs text-slate-500">Metz</span>
+                      </div>
+                      <Icons.FileDown className="w-5 h-5 text-orange-600" />
+                    </button>
+
+                    <button onClick={() => handleGeneratePdf('17-10')} className="w-full p-3 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                      <div>
+                        <span className="font-bold text-slate-900 block text-sm">Journée du 17/10/2026</span>
                         <span className="text-xs text-slate-500">Montpellier</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />

@@ -82,29 +82,48 @@
 
       // --- CALENDRIER & VILLES DE TOURNÉE ---
       const TOUR_SHOW_CITIES = {
-        '2026-10-06': { city: 'Paris → Bordeaux', isShowDay: false },
-        '2026-10-07': { city: 'Bordeaux', isShowDay: true },
-        '2026-10-08': { city: 'Nantes', isShowDay: true },
-        '2026-10-09': { city: 'Rennes', isShowDay: true },
-        '2026-10-10': { city: 'Transition / Rushs', isShowDay: false },
-        '2026-10-11': { city: 'Liévin', isShowDay: true },
-        '2026-10-12': { city: 'Rouen', isShowDay: true },
-        '2026-10-13': { city: 'Paris (Off / DDE)', isShowDay: false },
-        '2026-10-14': { city: 'Transit & Prépa', isShowDay: false },
-        '2026-10-15': { city: 'Dijon', isShowDay: true },
-        '2026-10-16': { city: 'Chambéry', isShowDay: true },
-        '2026-10-17': { city: 'Montpellier', isShowDay: true },
-        '2026-10-18': { city: 'Montpellier', isShowDay: false },
-        '2026-10-21': { city: 'Strasbourg', isShowDay: true },
-        '2026-10-22': { city: 'Metz', isShowDay: true },
-        '2026-10-23': { city: 'Bruxelles', isShowDay: true },
-        '2026-10-24': { city: 'Bruxelles', isShowDay: true },
-        '2026-10-27': { city: 'Nice', isShowDay: true },
-        '2026-10-28': { city: 'Aix en Provence', isShowDay: true },
-        '2026-10-29': { city: 'Lyon-Décines', isShowDay: true },
-        '2026-11-14': { city: 'Paris', isShowDay: true },
-        '2026-11-15': { city: 'Paris', isShowDay: true },
+        '2026-10-06': { city: 'Paris → Bordeaux' },
+        '2026-10-07': { city: 'Bordeaux' },
+        '2026-10-08': { city: 'Nantes' },
+        '2026-10-09': { city: 'Rennes' },
+        '2026-10-10': { city: 'Transition / Rushs' },
+        '2026-10-11': { city: 'Liévin' },
+        '2026-10-12': { city: 'Rouen' },
+        '2026-10-13': { city: 'Paris' },
+        '2026-10-14': { city: 'Transit & Prépa' },
+        '2026-10-15': { city: 'Dijon' },
+        '2026-10-16': { city: 'Chambéry' },
+        '2026-10-17': { city: 'Montpellier' },
+        '2026-10-18': { city: 'Toulouse' },
+        '2026-10-21': { city: 'Strasbourg' },
+        '2026-10-22': { city: 'Metz' },
+        '2026-10-23': { city: 'Bruxelles' },
+        '2026-10-24': { city: 'Bruxelles' },
+        '2026-10-27': { city: 'Nice' },
+        '2026-10-28': { city: 'Aix en Provence' },
+        '2026-10-29': { city: 'Lyon-Décines' },
+        '2026-11-14': { city: 'Paris' },
+        '2026-11-15': { city: 'Paris' },
       };
+
+      const ALL_TOUR_CITIES = [
+        'Bordeaux',
+        'Nantes',
+        'Rennes',
+        'Liévin',
+        'Rouen',
+        'Dijon',
+        'Chambéry',
+        'Montpellier',
+        'Toulouse',
+        'Strasbourg',
+        'Metz',
+        'Bruxelles',
+        'Nice',
+        'Aix en Provence',
+        'Lyon-Décines',
+        'Paris'
+      ];
 
       const getTourCity = (dateStr) => TOUR_SHOW_CITIES[dateStr] || null;
 
@@ -309,15 +328,13 @@
         return Math.max(0, (endMin - startMin) * 60);
       }
 
-      // Date toujours explicite et précise, sans termes relatifs
+      // Date au format JJ/MM/AA uniquement (ex: 17/10/26)
       function formatDayLabel(dateStr) {
         const [y, m, d] = dateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        const wd = date.toLocaleDateString('fr-FR', { weekday: 'long' });
         const day = d.toString().padStart(2, '0');
-        const mo = date.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
-        const capWd = wd.charAt(0).toUpperCase() + wd.slice(1);
-        return `${capWd} ${day} ${mo} (${day}/${m.toString().padStart(2, '0')}/${y})`;
+        const month = m.toString().padStart(2, '0');
+        const shortYear = y.toString().slice(-2);
+        return `${day}/${month}/${shortYear}`;
       }
 
       function formatFullDate(dateStr) {
@@ -985,7 +1002,7 @@
                 <div className="mt-4 pt-3.5 border-t border-slate-800/80">
                   <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5 mb-2">
                     <Icons.MapPin className="w-3 h-3 text-orange-400" />
-                    Villes de spectacle de la tournée :
+                    Villes de la tournée :
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {[
@@ -997,6 +1014,7 @@
                       { d: '15/10', c: 'Dijon' },
                       { d: '16/10', c: 'Chambéry' },
                       { d: '17/10', c: 'Montpellier' },
+                      { d: '18/10', c: 'Toulouse' },
                       { d: '21/10', c: 'Strasbourg' },
                       { d: '22/10', c: 'Metz' },
                       { d: '23/10', c: 'Bruxelles' },
@@ -1153,7 +1171,7 @@
                     <div className="flex gap-2">
                       <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl">
                         <option value="all">Toutes les villes ({selectedCity === 'all' ? 'Toutes' : selectedCity})</option>
-                        {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Strasbourg', 'Metz', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris'].map(c => (
+                        {ALL_TOUR_CITIES.map(c => (
                           <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
@@ -1183,12 +1201,11 @@
                           {/* Header de jour sans mots relatifs */}
                           <div className="flex items-center justify-between px-2 pb-2.5 text-xs text-slate-500 border-b border-slate-200/60 mb-3">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-800 text-sm capitalize">{day.formattedDate}</span>
+                              <span className="font-bold text-slate-800 text-sm font-mono">{day.formattedDate}</span>
                               {day.city && (
                                 <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
                                   <Icons.MapPin className="w-3 h-3 text-orange-600" />
                                   <span>{day.city}</span>
-                                  {day.isShowDay && <span className="text-[10px] uppercase font-bold text-orange-600/80">· Spectacle</span>}
                                 </span>
                               )}
                             </div>
@@ -1429,7 +1446,6 @@
                           <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
                             <Icons.MapPin className="w-3 h-3 text-orange-600" />
                             <span>{getTourCity(formDate).city}</span>
-                            {getTourCity(formDate).isShowDay && <span className="text-[9px] uppercase font-black text-orange-700">· Spectacle</span>}
                           </span>
                         )}
                       </div>
@@ -1455,7 +1471,7 @@
                             { d: '2026-10-29', c: 'Lyon-Décines' },
                             { d: '2026-11-14', c: 'Paris' },
                             { d: '2026-11-15', c: 'Paris' },
-                            { d: '2026-10-18', c: 'Montpellier' },
+                            { d: '2026-10-18', c: 'Toulouse' },
                             { d: '2026-10-17', c: 'Montpellier' },
                             { d: '2026-10-16', c: 'Chambéry' },
                             { d: '2026-10-15', c: 'Dijon' },
@@ -1494,7 +1510,7 @@
                           onChange={e => setFormCity(e.target.value)}
                           className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
                         >
-                          {['Metz', 'Strasbourg', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris', 'Montpellier', 'Chambéry', 'Dijon', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
+                          {ALL_TOUR_CITIES.map(c => (
                             <option key={c} value={c}>{c}</option>
                           ))}
                         </select>
@@ -1624,7 +1640,7 @@
                               { d: '2026-10-29', c: 'Lyon-Décines' },
                               { d: '2026-11-14', c: 'Paris' },
                               { d: '2026-11-15', c: 'Paris' },
-                              { d: '2026-10-18', c: 'Montpellier' },
+                              { d: '2026-10-18', c: 'Toulouse' },
                               { d: '2026-10-17', c: 'Montpellier' },
                               { d: '2026-10-16', c: 'Chambéry' },
                               { d: '2026-10-15', c: 'Dijon' },
@@ -1659,7 +1675,7 @@
                           onChange={e => setExpenseCity(e.target.value)}
                           className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
                         >
-                          {['Metz', 'Strasbourg', 'Bruxelles', 'Nice', 'Aix en Provence', 'Lyon-Décines', 'Paris', 'Montpellier', 'Chambéry', 'Dijon', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
+                          {ALL_TOUR_CITIES.map(c => (
                             <option key={c} value={c}>{c}</option>
                           ))}
                         </select>

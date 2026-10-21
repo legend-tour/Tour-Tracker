@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Legend Tour - Suivi du Temps</title>
-    <meta name="description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF." />
+    <meta name="description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF et gestion des frais." />
     <meta property="og:title" content="Legend Tour - Suivi du Temps" />
-    <meta property="og:description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF." />
+    <meta property="og:description" content="Application mobile autonome de suivi des temps travaillés par jour et par semaine pour le Legend Tour, avec export récapitulatif PDF et gestion des frais." />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#0f172a" />
 
@@ -80,7 +80,7 @@
     <script type="text/babel">
       const { useState, useEffect, useMemo, useRef } = React;
 
-      // --- TOUR SCHEDULE & CITIES (Conforme à votre demande) ---
+      // --- CALENDRIER & VILLES DE TOURNÉE ---
       const TOUR_SHOW_CITIES = {
         '2026-10-06': { city: 'Paris → Bordeaux', isShowDay: false },
         '2026-10-07': { city: 'Bordeaux', isShowDay: true },
@@ -94,14 +94,14 @@
         '2026-10-15': { city: 'Dijon', isShowDay: true },
         '2026-10-16': { city: 'Chambéry', isShowDay: true },
         '2026-10-17': { city: 'Montpellier', isShowDay: true },
-        '2026-10-18': { city: 'Montpellier (Aujourd’hui)', isShowDay: false },
+        '2026-10-18': { city: 'Montpellier', isShowDay: false },
       };
 
       const getTourCity = (dateStr) => TOUR_SHOW_CITIES[dateStr] || null;
 
       // --- INITIAL DATA EXACTEMENT ISSUE DES 10 CAPTURES D'ÉCRAN ---
       const INITIAL_ENTRIES = [
-        // 17/10/2026 (Hier) - Montpellier - Total: 14:44:00
+        // 17/10/2026 - Montpellier - Total: 14:44:00
         { id: '1', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'To do TR / flyers / prépa M&G', project: 'LEGEND TOUR', startTime: '19:16', endTime: '01:10', durationSeconds: 21240, category: 'Show & M&G', isBillable: true },
         { id: '2', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'To do salle chef de projet', project: 'LEGEND TOUR', startTime: '15:10', endTime: '18:45', durationSeconds: 12900, category: 'Chef de projet & Régie', isBillable: true },
         { id: '3', date: '2026-10-17', city: 'Montpellier', isShowDay: true, title: 'Suite et fin trajet', project: 'LEGEND TOUR', startTime: '13:30', endTime: '15:10', durationSeconds: 6000, category: 'Trajet & Déplacement', isBillable: true },
@@ -161,7 +161,114 @@
         { id: '37', date: '2026-10-06', city: 'Paris → Bordeaux', isShowDay: false, title: 'Trajet Paris - BDX + emails', project: 'LEGEND TOUR', startTime: '10:10', endTime: '13:15', durationSeconds: 11100, category: 'Trajet & Déplacement', isBillable: true }
       ];
 
-      // --- HELPERS TEMPS & DATES ---
+      // --- STOCKAGE PERSISTANT SÉCURISÉ & MULTI-SUPPORT ---
+      const STORAGE_KEYS = [
+        'legend_tour_entries_v3',
+        'legend_tour_entries',
+        'legend_tour_time_entries_v2',
+        'legend_tour_backup'
+      ];
+
+      function loadStoredEntries() {
+        for (const k of STORAGE_KEYS) {
+          try {
+            const raw = localStorage.getItem(k);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                // Fusion intelligente : on préserve toutes les entrées initiales et les nouvelles créées
+                const map = new Map();
+                INITIAL_ENTRIES.forEach(e => map.set(e.id, e));
+                parsed.forEach(e => {
+                  if (e && e.id && e.date) map.set(e.id, e);
+                });
+                return Array.from(map.values());
+              }
+            }
+          } catch (e) {}
+        }
+        try {
+          const rawSession = sessionStorage.getItem('legend_tour_entries_v3');
+          if (rawSession) {
+            const parsed = JSON.parse(rawSession);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const map = new Map();
+              INITIAL_ENTRIES.forEach(e => map.set(e.id, e));
+              parsed.forEach(e => { if (e && e.id && e.date) map.set(e.id, e); });
+              return Array.from(map.values());
+            }
+          }
+        } catch (e) {}
+        return INITIAL_ENTRIES;
+      }
+
+      function saveEntriesToStorage(list) {
+        STORAGE_KEYS.forEach(k => {
+          try {
+            localStorage.setItem(k, JSON.stringify(list));
+          } catch (e) {}
+        });
+        try {
+          sessionStorage.setItem('legend_tour_entries_v3', JSON.stringify(list));
+        } catch (e) {}
+        try {
+          window.__legend_entries_cache = list;
+        } catch (e) {}
+      }
+
+      // --- FRAIS PER-DIEM & TRANSPORTS VTC ---
+      const EXPENSES_STORAGE_KEY = 'legend_tour_expenses_v2';
+      const INITIAL_EXPENSES = [
+        {
+          id: 'exp-1',
+          date: '2026-10-17',
+          city: 'Montpellier',
+          type: 'Transport VTC',
+          amount: 32.50,
+          description: 'Course Uber : Gare Saint-Roch → Sud de France Arena',
+          receiptName: 'justificatif-uber-montpellier.pdf',
+          receiptData: null
+        },
+        {
+          id: 'exp-2',
+          date: '2026-10-17',
+          city: 'Montpellier',
+          type: 'Per-diem / Repas',
+          amount: 45.00,
+          description: 'Forfait per-diem repas équipe régie & show',
+          receiptName: '',
+          receiptData: null
+        },
+        {
+          id: 'exp-3',
+          date: '2026-10-16',
+          city: 'Chambéry',
+          type: 'Transport VTC',
+          amount: 28.00,
+          description: 'Course VTC : Hôtel → Le Phare Grand Chambéry',
+          receiptName: 'recu-vtc-chambery.png',
+          receiptData: null
+        }
+      ];
+
+      function loadStoredExpenses() {
+        try {
+          const raw = localStorage.getItem(EXPENSES_STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return parsed;
+          }
+        } catch (e) {}
+        return INITIAL_EXPENSES;
+      }
+
+      function saveExpensesToStorage(list) {
+        try {
+          localStorage.setItem(EXPENSES_STORAGE_KEY, JSON.stringify(list));
+        } catch (e) {}
+      }
+
+      // --- HELPERS TEMPS & DATES (ZÉRO MENTION HIER / AUJOURD'HUI) ---
       function secondsToHHMMSS(s) {
         const h = Math.floor(s / 3600);
         const m = Math.floor((s % 3600) / 60);
@@ -193,15 +300,15 @@
         return Math.max(0, (endMin - startMin) * 60);
       }
 
+      // Date toujours explicite et précise, sans termes relatifs
       function formatDayLabel(dateStr) {
-        if (dateStr === '2026-10-18') return "Aujourd'hui";
-        if (dateStr === '2026-10-17') return "Hier";
         const [y, m, d] = dateStr.split('-').map(Number);
         const date = new Date(y, m - 1, d);
-        const wd = date.toLocaleDateString('fr-FR', { weekday: 'short' });
+        const wd = date.toLocaleDateString('fr-FR', { weekday: 'long' });
         const day = d.toString().padStart(2, '0');
         const mo = date.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
-        return `${wd}., ${day} ${mo}.`;
+        const capWd = wd.charAt(0).toUpperCase() + wd.slice(1);
+        return `${capWd} ${day} ${mo} (${day}/${m.toString().padStart(2, '0')}/${y})`;
       }
 
       function formatFullDate(dateStr) {
@@ -209,6 +316,19 @@
         const date = new Date(y, m - 1, d);
         const res = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
         return res.charAt(0).toUpperCase() + res.slice(1);
+      }
+
+      function getWeekNumber(dateStr) {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const target = new Date(y, m - 1, d);
+        const dayNr = (target.getDay() + 6) % 7;
+        target.setDate(target.getDate() - dayNr + 3);
+        const firstThursday = target.valueOf();
+        target.setMonth(0, 1);
+        if (target.getDay() !== 4) {
+          target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+        }
+        return 1 + Math.ceil((firstThursday - target.valueOf()) / 604800000);
       }
 
       // --- ICONES SVG PURS (Sans dépendance externe) ---
@@ -220,37 +340,47 @@
         Plus: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
         Search: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>,
         Play: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
-        Square: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>,
         Edit: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>,
         Copy: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
         Trash: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
         X: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
         Check: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>,
-        Refresh: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+        Receipt: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-8"/><path d="M16 12h-8"/><path d="M12 16h-4"/></svg>,
+        Upload: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+        Download: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+        Car: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.2 2 11.5V16c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>,
+        Utensils: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 2v6a3 3 0 0 1-3 3 3 3 0 0 1-3-3V2"/><path d="M15 2v14a2 2 0 0 1-2 2h-2"/><path d="M6 2v20"/><path d="M6 7h4"/></svg>,
+        Database: ({ className }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
       };
 
       // --- APPLICATION PRINCIPALE ---
       function App() {
-        const [entries, setEntries] = useState(() => {
-          try {
-            const saved = localStorage.getItem('legend_tour_entries');
-            if (saved) return JSON.parse(saved);
-          } catch(e) {}
-          return INITIAL_ENTRIES;
-        });
+        const [activeTab, setActiveTab] = useState('timesheet'); // 'timesheet' | 'expenses'
 
-        // Sauvegarde auto
+        // 1. Données de temps avec persistance garantie
+        const [entries, setEntries] = useState(() => loadStoredEntries());
+
+        // Synchronisation automatique et synchrone
         useEffect(() => {
-          localStorage.setItem('legend_tour_entries', JSON.stringify(entries));
+          saveEntriesToStorage(entries);
         }, [entries]);
+
+        // 2. Données de dépenses (Per-diem & VTC)
+        const [expenses, setExpenses] = useState(() => loadStoredExpenses());
+        useEffect(() => {
+          saveExpensesToStorage(expenses);
+        }, [expenses]);
 
         // Filtres
         const [selectedCity, setSelectedCity] = useState('all');
         const [selectedWeek, setSelectedWeek] = useState('all');
         const [search, setSearch] = useState('');
         const [modalOpen, setModalOpen] = useState(false);
+        const [expenseModalOpen, setExpenseModalOpen] = useState(false);
+        const [backupModalOpen, setBackupModalOpen] = useState(false);
         const [pdfModalOpen, setPdfModalOpen] = useState(false);
         const [editEntry, setEditEntry] = useState(null);
+        const [editExpense, setEditExpense] = useState(null);
         const [toast, setToast] = useState(null);
 
         // Chronomètre live
@@ -268,12 +398,28 @@
 
         const showToast = msg => {
           setToast(msg);
-          setTimeout(() => setToast(null), 3000);
+          setTimeout(() => setToast(null), 3500);
         };
 
-        // Calculs totaux
+        // Calculs totaux temps
         const totalSec = useMemo(() => entries.reduce((a, b) => a + b.durationSeconds, 0), [entries]);
         const activeDaysCount = useMemo(() => new Set(entries.map(e => e.date)).size, [entries]);
+
+        // Semaines dynamiques présentes dans les données
+        const availableWeeks = useMemo(() => {
+          const weeksMap = new Map();
+          entries.forEach(e => {
+            const wNum = getWeekNumber(e.date);
+            const key = `S${wNum}`;
+            if (!weeksMap.has(key)) {
+              weeksMap.set(key, { key, label: `Sem. ${wNum}`, totalSec: 0, count: 0 });
+            }
+            const item = weeksMap.get(key);
+            item.totalSec += e.durationSeconds;
+            item.count += 1;
+          });
+          return Array.from(weeksMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+        }, [entries]);
 
         // Groupement par jour
         const dayGroups = useMemo(() => {
@@ -301,8 +447,10 @@
         const filteredDays = useMemo(() => {
           return dayGroups.filter(d => {
             if (selectedCity !== 'all' && d.city !== selectedCity) return false;
-            if (selectedWeek === 'S42' && (d.date < '2026-10-12' || d.date > '2026-10-18')) return false;
-            if (selectedWeek === 'S41' && (d.date < '2026-10-05' || d.date > '2026-10-11')) return false;
+            if (selectedWeek !== 'all') {
+              const dWeek = `S${getWeekNumber(d.date)}`;
+              if (dWeek !== selectedWeek) return false;
+            }
             if (search.trim()) {
               const q = search.toLowerCase();
               const hasMatch = d.entries.some(e => e.title.toLowerCase().includes(q) || (e.city || '').toLowerCase().includes(q));
@@ -312,23 +460,33 @@
           });
         }, [dayGroups, selectedCity, selectedWeek, search]);
 
-        // Actions
+        // Actions Créneaux Temps avec sauvegarde synchrone
         const handleSave = entryData => {
+          let nextEntries;
           if (editEntry) {
-            setEntries(prev => prev.map(e => e.id === editEntry.id ? { ...e, ...entryData } : e));
-            showToast('Créneau mis à jour !');
+            nextEntries = entries.map(e => e.id === editEntry.id ? { ...e, ...entryData } : e);
+            showToast(`Créneau modifié pour le ${entryData.date} (${secondsToHM(entryData.durationSeconds)})`);
           } else {
             const newId = 'e-' + Date.now();
-            setEntries(prev => [{ ...entryData, id: newId }, ...prev]);
-            showToast('Créneau ajouté !');
+            nextEntries = [{ ...entryData, id: newId }, ...entries];
+            showToast(`Nouveau créneau ajouté pour le ${entryData.date} (${secondsToHM(entryData.durationSeconds)})`);
           }
+          setEntries(nextEntries);
+          saveEntriesToStorage(nextEntries); // Écriture synchrone immédiate
+
+          // Réinitialiser les filtres pour afficher immédiatement le créneau ajouté
+          setSelectedCity('all');
+          setSelectedWeek('all');
+          setSearch('');
           setModalOpen(false);
           setEditEntry(null);
         };
 
         const handleDelete = id => {
           if (confirm('Supprimer ce créneau ?')) {
-            setEntries(prev => prev.filter(e => e.id !== id));
+            const nextEntries = entries.filter(e => e.id !== id);
+            setEntries(nextEntries);
+            saveEntriesToStorage(nextEntries);
             showToast('Créneau supprimé');
           }
         };
@@ -336,19 +494,83 @@
         const handleDuplicate = id => {
           const item = entries.find(e => e.id === id);
           if (item) {
-            setEntries(prev => [{ ...item, id: 'e-' + Date.now(), title: item.title + ' (copie)' }, ...prev]);
-            showToast('Créneau dupliqué !');
+            const newId = 'e-' + Date.now();
+            const copy = { ...item, id: newId, title: item.title + ' (copie)' };
+            const nextEntries = [copy, ...entries];
+            setEntries(nextEntries);
+            saveEntriesToStorage(nextEntries);
+            showToast(`Créneau dupliqué sur le ${item.date}`);
           }
         };
 
-        const handleReset = () => {
-          if (confirm('Restaurer les données initiales du Legend Tour ?')) {
-            setEntries(INITIAL_ENTRIES);
-            showToast('Données restaurées');
+        // Actions Dépenses (Per-diem & VTC)
+        const handleSaveExpense = expenseData => {
+          let next;
+          if (editExpense) {
+            next = expenses.map(x => x.id === editExpense.id ? { ...x, ...expenseData } : x);
+            showToast('Dépense mise à jour !');
+          } else {
+            const newId = 'exp-' + Date.now();
+            next = [{ ...expenseData, id: newId }, ...expenses];
+            showToast('Justificatif / Dépense enregistré !');
+          }
+          setExpenses(next);
+          saveExpensesToStorage(next);
+          setExpenseModalOpen(false);
+          setEditExpense(null);
+        };
+
+        const handleDeleteExpense = id => {
+          if (confirm('Supprimer cette dépense ?')) {
+            const next = expenses.filter(x => x.id !== id);
+            setExpenses(next);
+            saveExpensesToStorage(next);
+            showToast('Dépense supprimée');
           }
         };
 
-        // Export PDF complet
+        // Export/Import JSON de secours
+        const handleExportJSON = () => {
+          const backupData = {
+            exportDate: new Date().toISOString(),
+            entries,
+            expenses
+          };
+          const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `legend-tour-sauvegarde-${new Date().toISOString().split('T')[0]}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('Sauvegarde JSON téléchargée !');
+        };
+
+        const handleImportJSON = (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            try {
+              const data = JSON.parse(event.target.result);
+              if (Array.isArray(data.entries)) {
+                setEntries(data.entries);
+                saveEntriesToStorage(data.entries);
+              }
+              if (Array.isArray(data.expenses)) {
+                setExpenses(data.expenses);
+                saveExpensesToStorage(data.expenses);
+              }
+              showToast('Données importées avec succès !');
+              setBackupModalOpen(false);
+            } catch (err) {
+              alert('Fichier JSON invalide');
+            }
+          };
+          reader.readAsText(file);
+        };
+
+        // Export PDF complet des heures
         const handleGeneratePdf = (period) => {
           let list = entries;
           let label = 'Tournée Complète';
@@ -358,7 +580,7 @@
           } else if (period === 'S41') {
             list = entries.filter(e => e.date >= '2026-10-05' && e.date <= '2026-10-11');
             label = 'Semaine 41 (05 au 11 oct. 2026)';
-          } else if (period === 'hier') {
+          } else if (period === '17-10') {
             list = entries.filter(e => e.date === '2026-10-17');
             label = 'Journée du 17/10/2026 (Montpellier)';
           }
@@ -385,7 +607,7 @@
 
           doc.setFontSize(8.5);
           doc.setTextColor(251, 146, 60);
-          doc.text("Total cumulé arrêté au dimanche 18 octobre 2026 (Aujourd'hui)", 14, 28);
+          doc.text("Total cumulé arrêté au dimanche 18 octobre 2026", 14, 28);
 
           doc.setTextColor(203, 213, 225);
           doc.text(`Période : ${label}`, 196, 14, { align: 'right' });
@@ -461,6 +683,115 @@
           showToast('PDF téléchargé avec succès !');
         };
 
+        // Export PDF Note de Frais (Per-diem & VTC)
+        const handleGenerateExpensesPdf = () => {
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+          const totalAmount = expenses.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+          const totalVtc = expenses.filter(x => x.type === 'Transport VTC').reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+          const totalPerDiem = expenses.filter(x => x.type.includes('Per-diem')).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+
+          // En-tête
+          doc.setFillColor(15, 23, 42);
+          doc.rect(0, 0, 210, 36, 'F');
+          doc.setFillColor(234, 88, 12);
+          doc.rect(0, 36, 210, 2.5, 'F');
+
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text('LEGEND TOUR - NOTE DE FRAIS & JUSTIFICATIFS', 14, 14);
+
+          doc.setFontSize(10);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(226, 232, 240);
+          doc.text('REMBOURSEMENT PER-DIEM ET TRANSPORTS VTC', 14, 21);
+
+          doc.setFontSize(8.5);
+          doc.setTextColor(251, 146, 60);
+          doc.text('Document justificatif certifié pour remboursement de frais', 14, 28);
+
+          doc.setTextColor(203, 213, 225);
+          doc.text(`Édité le : ${new Date().toLocaleDateString('fr-FR')}`, 196, 14, { align: 'right' });
+          doc.text(`Projet : LEGEND TOUR`, 196, 20, { align: 'right' });
+          doc.text(`Nb lignes : ${expenses.length}`, 196, 26, { align: 'right' });
+
+          // KPI Cards
+          doc.setFillColor(248, 250, 252);
+          doc.setDrawColor(226, 232, 240);
+          doc.roundedRect(14, 44, 56, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('TOTAL REMBOURSEMENT', 18, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(234, 88, 12);
+          doc.text(`${totalAmount.toFixed(2)} €`, 18, 60);
+
+          doc.roundedRect(74, 44, 56, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('DONT TRANSPORTS VTC', 78, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(15, 23, 42);
+          doc.text(`${totalVtc.toFixed(2)} €`, 78, 60);
+
+          doc.roundedRect(134, 44, 62, 22, 2, 2, 'FD');
+          doc.setFontSize(8);
+          doc.setTextColor(100, 116, 139);
+          doc.text('DONT PER-DIEM / REPAS', 138, 51);
+          doc.setFontSize(14);
+          doc.setTextColor(15, 23, 42);
+          doc.text(`${totalPerDiem.toFixed(2)} €`, 138, 60);
+
+          // Table
+          const rows = expenses.map(x => [
+            x.date,
+            x.city || 'Tournée',
+            x.type,
+            x.description,
+            x.receiptName ? 'Reçu joint' : 'Déclaration forfait',
+            `${Number(x.amount).toFixed(2)} €`
+          ]);
+
+          doc.autoTable({
+            startY: 72,
+            head: [['Date', 'Ville', 'Type de frais', 'Description / Trajet', 'Justificatif', 'Montant']],
+            body: rows,
+            theme: 'striped',
+            headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 8 },
+            styles: { fontSize: 8, cellPadding: 2.8, textColor: [30, 41, 59] },
+            columnStyles: {
+              0: { cellWidth: 24, fontStyle: 'bold' },
+              1: { cellWidth: 26 },
+              2: { cellWidth: 34, fontStyle: 'bold' },
+              3: { cellWidth: 54 },
+              4: { cellWidth: 24, halign: 'center' },
+              5: { cellWidth: 20, halign: 'right', fontStyle: 'bold' }
+            },
+            margin: { left: 14, right: 14 }
+          });
+
+          // Si des images de reçus sont présentes, les annexer
+          const expensesWithImages = expenses.filter(x => x.receiptData && x.receiptData.startsWith('data:image'));
+          expensesWithImages.forEach((x, idx) => {
+            doc.addPage();
+            doc.setFontSize(12);
+            doc.setTextColor(15, 23, 42);
+            doc.text(`Annexe Justificatif #${idx + 1} - ${x.type} (${x.date} - ${x.city})`, 14, 16);
+            doc.setFontSize(9);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Montant : ${Number(x.amount).toFixed(2)} € | Objet : ${x.description}`, 14, 23);
+            try {
+              doc.addImage(x.receiptData, 'JPEG', 14, 28, 180, 120);
+            } catch (err) {
+              doc.text(`[Image jointe : ${x.receiptName}]`, 14, 35);
+            }
+          });
+
+          doc.save(`note-de-frais-legend-tour-${new Date().toISOString().split('T')[0]}.pdf`);
+          showToast('Note de frais PDF téléchargée !');
+        };
+
         return (
           <div className="min-h-screen flex flex-col pb-24 sm:pb-12">
             {/* Header */}
@@ -470,31 +801,64 @@
                   <div className="w-8 h-8 rounded-xl bg-orange-600 flex items-center justify-center font-black text-white text-base">L</div>
                   <div>
                     <h1 className="text-base font-bold text-white leading-none">LEGEND TOUR</h1>
-                    <span className="text-[11px] text-slate-400">Suivi des temps</span>
+                    <span className="text-[11px] text-slate-400">Suivi des temps & Frais</span>
                   </div>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-800/90 rounded-xl border border-slate-700/80 text-xs">
-                  <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
-                  <span className="text-slate-400">Total :</span>
-                  <span className="font-bold text-orange-400 font-mono text-sm">{secondsToHM(totalSec)}</span>
-                  <span className="text-slate-300 font-semibold bg-slate-700/60 px-1.5 py-0.5 rounded">sur {activeDaysCount} jours</span>
-                  <span className="text-slate-500">·</span>
-                  <span className="text-slate-300">au 18/10/2026</span>
+                {/* Onglets de navigation */}
+                <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700/80">
+                  <button
+                    onClick={() => setActiveTab('timesheet')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'timesheet' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icons.Clock className="w-3.5 h-3.5" />
+                    <span>Heures ({secondsToHM(totalSec)})</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('expenses')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeTab === 'expenses' ? 'bg-orange-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Icons.Receipt className="w-3.5 h-3.5" />
+                    <span>Frais & VTC ({expenses.length})</span>
+                  </button>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button onClick={handleReset} title="Restaurer données" className="p-2 text-slate-400 hover:text-white rounded-xl">
-                    <Icons.Refresh className="w-4 h-4" />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setBackupModalOpen(true)}
+                    title="Sauvegarde & Sécurité des données"
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl"
+                  >
+                    <Icons.Database className="w-4 h-4 text-emerald-400" />
                   </button>
-                  <button onClick={() => setPdfModalOpen(true)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700">
-                    <Icons.FileDown className="w-4 h-4 text-orange-400" />
-                    <span>Export PDF</span>
-                  </button>
-                  <button onClick={() => { setEditEntry(null); setModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
-                    <Icons.Plus className="w-4 h-4" />
-                    <span className="hidden xs:inline">Ajouter</span>
-                  </button>
+
+                  {activeTab === 'timesheet' ? (
+                    <>
+                      <button onClick={() => setPdfModalOpen(true)} className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700">
+                        <Icons.FileDown className="w-4 h-4 text-orange-400" />
+                        <span>PDF Heures</span>
+                      </button>
+                      <button onClick={() => { setEditEntry(null); setModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                        <Icons.Plus className="w-4 h-4" />
+                        <span className="hidden xs:inline">Ajouter Heures</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={handleGenerateExpensesPdf} className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold border border-slate-700">
+                        <Icons.FileDown className="w-4 h-4 text-orange-400" />
+                        <span>PDF Frais</span>
+                      </button>
+                      <button onClick={() => { setEditExpense(null); setExpenseModalOpen(true); }} className="flex items-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                        <Icons.Plus className="w-4 h-4" />
+                        <span className="hidden xs:inline">Ajouter Frais</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </header>
@@ -509,19 +873,31 @@
                       <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
                       <span className="text-xs font-bold text-orange-400 uppercase tracking-wider">Projet Officiel • LEGEND TOUR</span>
                     </div>
-                    <h2 className="text-xl sm:text-2xl font-black text-white">Feuilles de Temps & Villes du Tour</h2>
+                    <h2 className="text-xl sm:text-2xl font-black text-white">
+                      {activeTab === 'timesheet' ? 'Feuilles de Temps & Villes du Tour' : 'Notes de Frais, Per-diem & Transports VTC'}
+                    </h2>
                     <div className="mt-2 flex items-center gap-2 text-xs font-medium">
                       <span className="inline-flex items-center gap-1.5 text-orange-200 bg-orange-950/60 border border-orange-500/30 rounded-xl px-3 py-1.5">
                         <Icons.Calendar className="w-3.5 h-3.5 text-orange-400" />
-                        Total cumulé arrêté au <strong>dimanche 18 octobre 2026</strong> (Aujourd'hui)
+                        Total cumulé arrêté au <strong>dimanche 18 octobre 2026</strong>
                       </span>
                     </div>
                   </div>
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between border-t sm:border-t-0 border-slate-700/60 pt-3 sm:pt-0">
-                    <span className="text-xs text-slate-400">Total cumulé au 18/10</span>
-                    <div className="text-2xl sm:text-3xl font-black text-orange-400 font-mono tabular-nums">{secondsToHM(totalSec)}</div>
-                    <span className="text-[11px] text-slate-400 font-mono mt-1">{secondsToDecimal(totalSec)} heures certifiées</span>
+                    <span className="text-xs text-slate-400">
+                      {activeTab === 'timesheet' ? 'Total arrêté au 18/10/2026' : 'Total Frais à rembourser'}
+                    </span>
+                    <div className="text-2xl sm:text-3xl font-black text-orange-400 font-mono tabular-nums">
+                      {activeTab === 'timesheet'
+                        ? secondsToHM(totalSec)
+                        : `${expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €`}
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono mt-1">
+                      {activeTab === 'timesheet'
+                        ? `${secondsToDecimal(totalSec)} heures certifiées`
+                        : `${expenses.length} justificatifs enregistrés`}
+                    </span>
                   </div>
                 </div>
 
@@ -559,195 +935,366 @@
                 </div>
               </div>
 
-              {/* Chronomètre direct */}
-              <div className="bg-white rounded-2xl p-3.5 shadow-xs border border-slate-200 mb-6 flex items-center justify-between gap-3">
-                {timerRunning ? (
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-3">
-                      <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping" />
-                      <div>
-                        <span className="text-xs font-bold text-slate-900">{timerTitle || 'Activité en direct'}</span>
-                        <span className="text-[11px] text-orange-600 block">• LEGEND TOUR</span>
+              {/* VUE 1 : FEUILLES DE TEMPS */}
+              {activeTab === 'timesheet' && (
+                <>
+                  {/* Chronomètre direct */}
+                  <div className="bg-white rounded-2xl p-3.5 shadow-xs border border-slate-200 mb-6 flex items-center justify-between gap-3">
+                    {timerRunning ? (
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-3">
+                          <span className="w-3 h-3 rounded-full bg-orange-500 animate-ping" />
+                          <div>
+                            <span className="text-xs font-bold text-slate-900">{timerTitle || 'Activité en cours'}</span>
+                            <span className="text-[11px] text-orange-600 block">• LEGEND TOUR</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-lg font-bold font-mono">{secondsToHHMMSS(timerSeconds)}</span>
+                          <button
+                            onClick={() => {
+                              const now = new Date();
+                              const pad = n => n.toString().padStart(2, '0');
+                              const end = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                              const startD = new Date(Date.now() - timerSeconds * 1000);
+                              const start = `${pad(startD.getHours())}:${pad(startD.getMinutes())}`;
+                              const todayStr = '2026-10-18';
+                              handleSave({
+                                title: timerTitle || 'Tâche chronométrée',
+                                date: todayStr,
+                                city: 'Montpellier',
+                                startTime: start,
+                                endTime: end,
+                                durationSeconds: Math.max(60, timerSeconds),
+                                project: 'LEGEND TOUR',
+                                category: 'Chef de projet & Régie',
+                                isBillable: true
+                              });
+                              setTimerRunning(false);
+                              setTimerSeconds(0);
+                              setTimerTitle('');
+                            }}
+                            className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+                          >
+                            Arrêter & Enregistrer
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 w-full">
+                        <input
+                          type="text"
+                          value={timerTitle}
+                          onChange={e => setTimerTitle(e.target.value)}
+                          placeholder="Chronométrer une tâche en direct..."
+                          className="flex-1 px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                        />
+                        <button
+                          onClick={() => setTimerRunning(true)}
+                          className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors"
+                        >
+                          <Icons.Play className="w-3 h-3" />
+                          <span>Démarrer</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Synthèse hebdomadaire dynamique */}
+                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 mb-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-2">
+                      <div className="flex items-center gap-2">
+                        <Icons.Calendar className="w-4 h-4 text-orange-600" />
+                        <span className="text-xs font-bold uppercase text-slate-800">Synthèse Hebdomadaire</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          onClick={() => setSelectedWeek('all')}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all ${
+                            selectedWeek === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          Toutes les dates
+                        </button>
+                        {availableWeeks.map(w => (
+                          <button
+                            key={w.key}
+                            onClick={() => setSelectedWeek(w.key)}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-xl transition-all ${
+                              selectedWeek === w.key ? 'bg-orange-600 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {w.label} ({secondsToHM(w.totalSec)})
+                          </button>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold font-mono">{secondsToHHMMSS(timerSeconds)}</span>
-                      <button
-                        onClick={() => {
-                          const now = new Date();
-                          const pad = n => n.toString().padStart(2, '0');
-                          const end = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
-                          const startD = new Date(Date.now() - timerSeconds * 1000);
-                          const start = `${pad(startD.getHours())}:${pad(startD.getMinutes())}`;
-                          handleSave({
-                            title: timerTitle || 'Tâche chronométrée',
-                            date: '2026-10-18',
-                            city: 'Montpellier',
-                            startTime: start,
-                            endTime: end,
-                            durationSeconds: Math.max(60, timerSeconds),
-                            project: 'LEGEND TOUR',
-                            category: 'Chef de projet & Régie',
-                            isBillable: true
-                          });
-                          setTimerRunning(false);
-                          setTimerSeconds(0);
-                          setTimerTitle('');
-                        }}
-                        className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
-                      >
-                        Arrêter
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <span className="text-[11px] text-slate-500 block mb-0.5">Jours travaillés</span>
+                        <span className="text-xl font-black text-slate-900 font-mono">{activeDaysCount} jours</span>
+                      </div>
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <span className="text-[11px] text-slate-500 block mb-0.5">Moyenne / jour actif</span>
+                        <span className="text-xl font-black text-slate-900 font-mono">
+                          {activeDaysCount ? secondsToHM(Math.round(totalSec / activeDaysCount)) : '0 min'}
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <span className="text-[11px] text-slate-500 block mb-0.5">Nombre de créneaux</span>
+                        <span className="text-xl font-black text-slate-900 font-mono">{entries.length} créneaux déclarés</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barre de recherche et filtre */}
+                  <div className="bg-white rounded-2xl p-3 shadow-xs border border-slate-100 mb-5 flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <Icons.Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Rechercher tâche, ville..."
+                        className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl">
+                        <option value="all">Toutes les villes</option>
+                        {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Paris'].map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => setPdfModalOpen(true)} className="px-3 py-2 text-xs font-bold bg-orange-50 text-orange-700 rounded-xl flex items-center gap-1.5 shrink-0">
+                        <Icons.FileDown className="w-3.5 h-3.5" />
+                        <span>Export PDF</span>
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 w-full">
-                    <input
-                      type="text"
-                      value={timerTitle}
-                      onChange={e => setTimerTitle(e.target.value)}
-                      placeholder="Chronométrer une tâche en direct..."
-                      className="flex-1 px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
-                    />
-                    <button
-                      onClick={() => setTimerRunning(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-orange-600 text-white rounded-xl text-xs font-bold transition-colors"
-                    >
-                      <Icons.Play className="w-3 h-3" />
-                      <span>Démarrer</span>
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              {/* Synthèse hebdomadaire */}
-              <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 mb-6">
-                <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Icons.Calendar className="w-4 h-4 text-orange-600" />
-                    <span className="text-xs font-bold uppercase text-slate-800">Synthèse Hebdomadaire</span>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => setSelectedWeek('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}>Toutes</button>
-                    <button onClick={() => setSelectedWeek('S42')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'S42' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Sem. 42 (55h54)</button>
-                    <button onClick={() => setSelectedWeek('S41')} className={`px-3 py-1.5 text-xs font-semibold rounded-xl ${selectedWeek === 'S41' ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600'}`}>Sem. 41 (67h50)</button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block mb-0.5">Jours travaillés</span>
-                    <span className="text-xl font-black text-slate-900 font-mono">{activeDaysCount} jours</span>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block mb-0.5">Moyenne / jour actif</span>
-                    <span className="text-xl font-black text-slate-900 font-mono">{secondsToHM(Math.round(totalSec / activeDaysCount))}</span>
-                  </div>
-                  <div className="col-span-2 sm:col-span-1 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                    <span className="text-[11px] text-slate-500 block mb-0.5">Nombre de créneaux</span>
-                    <span className="text-xl font-black text-slate-900 font-mono">{entries.length} créneaux</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Barre de recherche et filtre */}
-              <div className="bg-white rounded-2xl p-3 shadow-xs border border-slate-100 mb-5 flex flex-col sm:flex-row gap-2.5">
-                <div className="relative flex-1">
-                  <Icons.Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Rechercher tâche, ville..."
-                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)} className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl">
-                    <option value="all">Toutes les villes</option>
-                    {['Bordeaux', 'Nantes', 'Rennes', 'Liévin', 'Rouen', 'Dijon', 'Chambéry', 'Montpellier', 'Paris'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => setPdfModalOpen(true)} className="px-3 py-2 text-xs font-bold bg-orange-50 text-orange-700 rounded-xl flex items-center gap-1.5 shrink-0">
-                    <Icons.FileDown className="w-3.5 h-3.5" />
-                    <span>Export PDF</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Liste des journées */}
-              <div className="space-y-6">
-                {filteredDays.map(day => (
-                  <div key={day.date} className="bg-white/60 p-1 rounded-3xl">
-                    {/* Header de jour */}
-                    <div className="flex items-center justify-between px-2 pb-2.5 text-xs text-slate-500 border-b border-slate-200/60 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-800 text-sm capitalize">{day.formattedDate}</span>
-                        {day.city && (
-                          <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
-                            <Icons.MapPin className="w-3 h-3 text-orange-600" />
-                            <span>{day.city}</span>
-                            {day.isShowDay && <span className="text-[10px] uppercase font-bold text-orange-600/80">· Spectacle</span>}
-                          </span>
-                        )}
+                  {/* Liste des journées */}
+                  <div className="space-y-6">
+                    {filteredDays.length === 0 ? (
+                      <div className="bg-white rounded-3xl p-8 text-center text-slate-500 border border-slate-200">
+                        <Icons.Clock className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                        <p className="font-semibold text-slate-700">Aucun créneau ne correspond aux critères sélectionnés.</p>
+                        <button
+                          onClick={() => { setSelectedCity('all'); setSelectedWeek('all'); setSearch(''); }}
+                          className="mt-3 px-4 py-2 bg-orange-600 text-white rounded-xl text-xs font-bold"
+                        >
+                          Réinitialiser les filtres
+                        </button>
                       </div>
-                      <div className="font-mono tabular-nums font-bold text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md text-sm">
-                        {secondsToHHMMSS(day.totalSeconds)}
-                      </div>
-                    </div>
-
-                    {/* Cartes du jour */}
-                    <div className="space-y-3">
-                      {day.entries.map(entry => (
-                        <div key={entry.id} className="bg-white rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 hover:border-slate-200">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 pr-2">
-                              <h4 className="text-[15px] font-semibold text-slate-900 leading-snug">{entry.title}</h4>
-                              <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
-                                <span className="font-medium text-orange-600">• LEGEND TOUR</span>
-                                {entry.city && <><span className="text-slate-300">·</span><span>{entry.city}</span></>}
-                                {entry.category && <><span className="text-slate-300">·</span><span>{entry.category}</span></>}
-                              </div>
+                    ) : (
+                      filteredDays.map(day => (
+                        <div key={day.date} className="bg-white/60 p-1 rounded-3xl">
+                          {/* Header de jour sans mots relatifs */}
+                          <div className="flex items-center justify-between px-2 pb-2.5 text-xs text-slate-500 border-b border-slate-200/60 mb-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800 text-sm capitalize">{day.formattedDate}</span>
+                              {day.city && (
+                                <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200/60">
+                                  <Icons.MapPin className="w-3 h-3 text-orange-600" />
+                                  <span>{day.city}</span>
+                                  {day.isShowDay && <span className="text-[10px] uppercase font-bold text-orange-600/80">· Spectacle</span>}
+                                </span>
+                              )}
                             </div>
-                            <div className="text-right shrink-0">
-                              <div className="text-base sm:text-lg font-bold text-slate-900 font-mono tabular-nums">{secondsToHHMMSS(entry.durationSeconds)}</div>
-                              <div className="text-xs text-slate-400 font-mono mt-0.5">{entry.startTime} - {entry.endTime}</div>
+                            <div className="font-mono tabular-nums font-bold text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md text-sm">
+                              {secondsToHHMMSS(day.totalSeconds)}
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-400">
-                            <span className="flex items-center gap-1"><Icons.Clock className="w-3.5 h-3.5" /> Chronométré</span>
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => { setEditEntry(entry); setModalOpen(true); }} className="p-1.5 hover:bg-slate-100 rounded-lg"><Icons.Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDuplicate(entry.id)} className="p-1.5 hover:bg-slate-100 rounded-lg"><Icons.Copy className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDelete(entry.id)} className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                          {/* Cartes du jour */}
+                          <div className="space-y-3">
+                            {day.entries.map(entry => (
+                              <div key={entry.id} className="bg-white rounded-2xl p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-100 hover:border-slate-200">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1 pr-2">
+                                    <h4 className="text-[15px] font-semibold text-slate-900 leading-snug">{entry.title}</h4>
+                                    <div className="flex items-center gap-2 mt-1.5 text-xs text-slate-500">
+                                      <span className="font-medium text-orange-600">• LEGEND TOUR</span>
+                                      {entry.city && <><span className="text-slate-300">·</span><span>{entry.city}</span></>}
+                                      {entry.category && <><span className="text-slate-300">·</span><span>{entry.category}</span></>}
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <div className="text-base sm:lg font-bold text-slate-900 font-mono tabular-nums">{secondsToHHMMSS(entry.durationSeconds)}</div>
+                                    <div className="text-xs text-slate-400 font-mono mt-0.5">{entry.startTime} - {entry.endTime}</div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 text-xs text-slate-400">
+                                  <span className="flex items-center gap-1 font-mono text-[11px] text-slate-400">
+                                    <Icons.Calendar className="w-3 h-3 text-orange-500" />
+                                    <span>Date : {entry.date}</span>
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => { setEditEntry(entry); setModalOpen(true); }} title="Modifier" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => handleDuplicate(entry.id)} title="Dupliquer" className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600"><Icons.Copy className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => handleDelete(entry.id)} title="Supprimer" className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-slate-400"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* VUE 2 : FRAIS PER-DIEM & TRANSPORTS VTC */}
+              {activeTab === 'expenses' && (
+                <div className="space-y-6">
+                  {/* Résumé des frais */}
+                  <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-4 border-b border-slate-100 gap-2">
+                      <div className="flex items-center gap-2">
+                        <Icons.Receipt className="w-4 h-4 text-orange-600" />
+                        <span className="text-xs font-bold uppercase text-slate-800">Gestion des Remboursements & Reçus</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleGenerateExpensesPdf}
+                          className="px-3.5 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-orange-600 flex items-center gap-1.5"
+                        >
+                          <Icons.FileDown className="w-3.5 h-3.5 text-orange-400" />
+                          <span>Télécharger Note de Frais (PDF)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
+                          <Icons.Car className="w-4 h-4 text-orange-600" />
+                          <span>Transports VTC & Taxis</span>
+                        </div>
+                        <span className="text-xl font-black text-slate-900 font-mono">
+                          {expenses.filter(x => x.type === 'Transport VTC').reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
+                          <Icons.Utensils className="w-4 h-4 text-orange-600" />
+                          <span>Per-diem / Repas Tournée</span>
+                        </div>
+                        <span className="text-xl font-black text-slate-900 font-mono">
+                          {expenses.filter(x => x.type.includes('Per-diem')).reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €
+                        </span>
+                      </div>
+
+                      <div className="bg-orange-50/70 p-4 rounded-2xl border border-orange-200/60">
+                        <div className="text-xs text-orange-800 font-bold mb-1">Total Global à Rembourser</div>
+                        <span className="text-2xl font-black text-orange-600 font-mono">
+                          {expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0).toFixed(2)} €
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bouton d'ajout frais rapide */}
+                  <div className="flex justify-between items-center bg-white p-3.5 rounded-2xl border border-slate-200">
+                    <span className="text-xs font-medium text-slate-600">Ajouter un reçu de course VTC ou un forfait per-diem :</span>
+                    <button
+                      onClick={() => { setEditExpense(null); setExpenseModalOpen(true); }}
+                      className="px-3.5 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                    >
+                      <Icons.Plus className="w-4 h-4" />
+                      <span>Ajouter un justificatif</span>
+                    </button>
+                  </div>
+
+                  {/* Liste des justificatifs */}
+                  <div className="space-y-3">
+                    {expenses.length === 0 ? (
+                      <div className="bg-white rounded-3xl p-8 text-center text-slate-400 border border-slate-200">
+                        <Icons.Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                        <p className="font-semibold text-slate-700">Aucun reçu ou per-diem déclaré.</p>
+                      </div>
+                    ) : (
+                      expenses.map(exp => (
+                        <div key={exp.id} className="bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-orange-100 text-orange-800">
+                                  {exp.type}
+                                </span>
+                                <span className="text-xs font-bold text-slate-800 font-mono">{exp.date}</span>
+                                {exp.city && (
+                                  <span className="text-xs text-slate-500 flex items-center gap-0.5">
+                                    <Icons.MapPin className="w-3 h-3 text-orange-600" />
+                                    {exp.city}
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="text-sm font-semibold text-slate-900 mt-1.5">{exp.description}</h4>
+                              {exp.receiptName && (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <span className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                    <Icons.Receipt className="w-3 h-3 text-slate-400" />
+                                    {exp.receiptName}
+                                  </span>
+                                  {exp.receiptData && (
+                                    <a
+                                      href={exp.receiptData}
+                                      download={exp.receiptName || 'justificatif.png'}
+                                      className="text-[11px] text-orange-600 font-bold hover:underline flex items-center gap-1"
+                                    >
+                                      <Icons.Download className="w-3 h-3" />
+                                      Télécharger le reçu
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <div className="text-lg font-black text-slate-900 font-mono">{Number(exp.amount).toFixed(2)} €</div>
+                              <div className="flex items-center gap-1 mt-2 justify-end">
+                                <button onClick={() => { setEditExpense(exp); setExpenseModalOpen(true); }} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500"><Icons.Edit className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleDeleteExpense(exp.id)} className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      ))
+                    )}
                   </div>
-                ))}
-              </div>
+                </div>
+              )}
             </main>
 
             {/* Bouton flottant mobile */}
             <div className="fixed bottom-6 right-5 z-40 sm:hidden">
               <button
-                onClick={() => { setEditEntry(null); setModalOpen(true); }}
+                onClick={() => {
+                  if (activeTab === 'timesheet') {
+                    setEditEntry(null);
+                    setModalOpen(true);
+                  } else {
+                    setEditExpense(null);
+                    setExpenseModalOpen(true);
+                  }
+                }}
                 className="w-14 h-14 rounded-full bg-orange-600 active:scale-95 text-white shadow-xl flex items-center justify-center"
               >
                 <Icons.Plus className="w-7 h-7" />
               </button>
             </div>
 
-            {/* Modal de saisie / modification */}
+            {/* Modal de saisie / modification Heures */}
             {modalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
                 <div className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <h3 className="text-lg font-bold text-slate-900">{editEntry ? 'Modifier le créneau' : 'Nouveau créneau'}</h3>
+                    <h3 className="text-lg font-bold text-slate-900">{editEntry ? 'Modifier le créneau de travail' : 'Nouveau créneau de travail'}</h3>
                     <button onClick={() => setModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
                   </div>
                   <form onSubmit={e => {
@@ -759,58 +1306,188 @@
                     const start = form.start.value;
                     const end = form.end.value;
                     const cat = form.category.value;
-                    const sec = calcIntervalSec(start, end);
-                    handleSave({ title, date, city, startTime: start, endTime: end, durationSeconds: sec, category: cat, project: 'LEGEND TOUR' });
+                    let sec = calcIntervalSec(start, end);
+                    if (sec === 0 && form.manualDurationHours && form.manualDurationHours.value) {
+                      sec = Math.round(Number(form.manualDurationHours.value) * 3600);
+                    }
+                    if (sec === 0) sec = 3600; // Sécurité minimale 1h si horaire identique
+                    handleSave({ title, date, city, startTime: start, endTime: end, durationSeconds: sec, category: cat, project: 'LEGEND TOUR', isBillable: true });
                   }} className="space-y-4 mt-4">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description</label>
-                      <input name="title" defaultValue={editEntry ? editEntry.title : ''} required placeholder="ex: Show + M&G" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description de la tâche</label>
+                      <input name="title" defaultValue={editEntry ? editEntry.title : ''} required placeholder="ex: Show + M&G + rangements" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
                       <div className="flex flex-wrap gap-1.5 mt-2">
-                        {['Show + M&G + rangements', 'To do salle chef de projet', 'Copie des rushs', 'Trajet déplacement'].map(s => (
+                        {['Show + M&G + rangements', 'To do salle chef de projet', 'Copie des rushs', 'Trajet déplacement', 'Filage complet du show'].map(s => (
                           <button key={s} type="button" onClick={e => e.target.closest('form').title.value = s} className="text-xs px-2 py-1 bg-slate-100 hover:bg-orange-50 rounded-lg text-slate-600">{s}</button>
                         ))}
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date</label>
-                        <input name="date" type="date" defaultValue={editEntry ? editEntry.date : '2026-10-18'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville</label>
-                        <input name="city" defaultValue={editEntry ? editEntry.city : 'Montpellier'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date exacte</label>
+                      <input
+                        name="date"
+                        type="date"
+                        id="form-entry-date"
+                        defaultValue={editEntry ? editEntry.date : '2026-10-18'}
+                        required
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono"
+                      />
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        <span className="text-[11px] text-slate-400 mr-1 flex items-center">Dates rapides :</span>
+                        {['2026-10-18', '2026-10-17', '2026-10-16', '2026-10-15', '2026-10-12', '2026-10-11', '2026-10-09', '2026-10-08', '2026-10-07'].map(d => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={e => {
+                              const input = document.getElementById('form-entry-date');
+                              if (input) input.value = d;
+                            }}
+                            className="text-[10px] px-2 py-0.5 bg-slate-100 hover:bg-orange-100 text-slate-700 rounded-md font-mono"
+                          >
+                            {d.slice(8, 10)}/{d.slice(5, 7)}
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville de la tournée</label>
+                        <select name="city" defaultValue={editEntry ? editEntry.city : 'Montpellier'} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                          {['Montpellier', 'Chambéry', 'Dijon', 'Paris', 'Rouen', 'Liévin', 'Rennes', 'Nantes', 'Bordeaux'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Catégorie</label>
+                        <select name="category" defaultValue={editEntry ? editEntry.category : 'Chef de projet & Régie'} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm">
+                          <option value="Show & M&G">Show & M&G</option>
+                          <option value="Chef de projet & Régie">Chef de projet & Régie</option>
+                          <option value="Trajet & Déplacement">Trajet & Déplacement</option>
+                          <option value="Technique & Rushs">Technique & Rushs</option>
+                          <option value="Média & Vidéo">Média & Vidéo</option>
+                        </select>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">Début</label>
+                        <label className="block text-xs text-slate-500 mb-1">Heure de début</label>
                         <input name="start" type="time" defaultValue={editEntry ? editEntry.startTime : '14:00'} required className="w-full p-2 bg-white border border-slate-200 rounded-xl text-sm font-mono" />
                       </div>
                       <div>
-                        <label className="block text-xs text-slate-500 mb-1">Fin</label>
+                        <label className="block text-xs text-slate-500 mb-1">Heure de fin</label>
                         <input name="end" type="time" defaultValue={editEntry ? editEntry.endTime : '18:00'} required className="w-full p-2 bg-white border border-slate-200 rounded-xl text-sm font-mono" />
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Catégorie</label>
-                      <select name="category" defaultValue={editEntry ? editEntry.category : 'Chef de projet & Régie'} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-                        <option value="Show & M&G">Show & M&G</option>
-                        <option value="Chef de projet & Régie">Chef de projet & Régie</option>
-                        <option value="Trajet & Déplacement">Trajet & Déplacement</option>
-                        <option value="Technique & Rushs">Technique & Rushs</option>
-                        <option value="Média & Vidéo">Média & Vidéo</option>
-                      </select>
-                    </div>
+
                     <div className="flex gap-3 pt-2">
                       <button type="button" onClick={() => setModalOpen(false)} className="flex-1 py-3 text-sm font-semibold bg-slate-100 rounded-xl">Annuler</button>
-                      <button type="submit" className="flex-1 py-3 text-sm font-bold bg-orange-600 text-white rounded-xl shadow-md">Enregistrer</button>
+                      <button type="submit" className="flex-1 py-3 text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white rounded-xl shadow-md">Enregistrer & Valider</button>
                     </div>
                   </form>
                 </div>
               </div>
             )}
 
-            {/* Modal d'export PDF */}
+            {/* Modal de saisie Frais (Per-diem & VTC) */}
+            {expenseModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+                <div className="w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                    <h3 className="text-lg font-bold text-slate-900">{editExpense ? 'Modifier la dépense' : 'Ajouter un justificatif / Per-diem'}</h3>
+                    <button onClick={() => setExpenseModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
+                  </div>
+                  <form onSubmit={e => {
+                    e.preventDefault();
+                    const form = e.target;
+                    const type = form.type.value;
+                    const date = form.date.value;
+                    const city = form.city.value;
+                    const amount = parseFloat(form.amount.value) || 0;
+                    const description = form.description.value.trim();
+                    const fileInput = form.receiptFile;
+
+                    if (fileInput && fileInput.files && fileInput.files[0]) {
+                      const file = fileInput.files[0];
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        handleSaveExpense({
+                          type,
+                          date,
+                          city,
+                          amount,
+                          description,
+                          receiptName: file.name,
+                          receiptData: reader.result
+                        });
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      handleSaveExpense({
+                        type,
+                        date,
+                        city,
+                        amount,
+                        description,
+                        receiptName: editExpense?.receiptName || '',
+                        receiptData: editExpense?.receiptData || null
+                      });
+                    }
+                  }} className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Type de frais</label>
+                        <select name="type" defaultValue={editExpense ? editExpense.type : 'Transport VTC'} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold">
+                          <option value="Transport VTC">Transport VTC / Uber / Taxi</option>
+                          <option value="Per-diem / Repas">Per-diem / Repas de tournée</option>
+                          <option value="Transport Train / Avion">Transport Train / Avion</option>
+                          <option value="Hôtel / Hébergement">Hôtel / Hébergement</option>
+                          <option value="Autre frais">Autre frais</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Montant en €</label>
+                        <input name="amount" type="number" step="0.01" defaultValue={editExpense ? editExpense.amount : '25.00'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Date exacte</label>
+                        <input name="date" type="date" defaultValue={editExpense ? editExpense.date : '2026-10-18'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Ville</label>
+                        <input name="city" defaultValue={editExpense ? editExpense.city : 'Montpellier'} required className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Description / Motif</label>
+                      <input name="description" defaultValue={editExpense ? editExpense.description : ''} required placeholder="ex: Course Uber Gare - Salle spectacle" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm" />
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Joindre le reçu (Image ou PDF)</label>
+                      <input name="receiptFile" type="file" accept="image/*,application/pdf" className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200" />
+                      {editExpense?.receiptName && (
+                        <p className="text-[11px] text-slate-500 mt-1">Fichier actuel : {editExpense.receiptName}</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button type="button" onClick={() => setExpenseModalOpen(false)} className="flex-1 py-3 text-sm font-semibold bg-slate-100 rounded-xl">Annuler</button>
+                      <button type="submit" className="flex-1 py-3 text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white rounded-xl shadow-md">Enregistrer la dépense</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Modal d'export PDF Heures */}
             {pdfModalOpen && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
                 <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl">
@@ -822,7 +1499,7 @@
                     <button onClick={() => handleGeneratePdf('tout')} className="w-full p-3.5 text-left rounded-2xl border border-orange-500 bg-orange-50/50 hover:bg-orange-100/50 flex justify-between items-center">
                       <div>
                         <span className="font-bold text-slate-900 block text-sm">Tournée complète (123h44)</span>
-                        <span className="text-xs text-slate-500">Toutes les dates & 8 villes</span>
+                        <span className="text-xs text-slate-500">Toutes les dates & 8 villes de tournée</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
@@ -840,15 +1517,71 @@
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
-                    <button onClick={() => handleGeneratePdf('hier')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
+                    <button onClick={() => handleGeneratePdf('17-10')} className="w-full p-3.5 text-left rounded-2xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/30 flex justify-between items-center">
                       <div>
-                        <span className="font-bold text-slate-900 block text-sm">Hier (17/10 - 14h44)</span>
+                        <span className="font-bold text-slate-900 block text-sm">Journée du 17/10/2026 (14h44)</span>
                         <span className="text-xs text-slate-500">Montpellier</span>
                       </div>
                       <Icons.FileDown className="w-5 h-5 text-orange-600" />
                     </button>
                   </div>
                   <button onClick={() => setPdfModalOpen(false)} className="w-full py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl">Fermer</button>
+                </div>
+              </div>
+            )}
+
+            {/* Modal Sauvegarde / Export JSON */}
+            {backupModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+                <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Icons.Database className="w-5 h-5 text-emerald-500" />
+                      <h3 className="text-base font-bold text-slate-900">Sauvegarde & Sécurité des données</h3>
+                    </div>
+                    <button onClick={() => setBackupModalOpen(false)} className="p-2 text-slate-400"><Icons.X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="py-4 space-y-4">
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Vos heures ({entries.length} créneaux) et vos frais ({expenses.length} justificatifs) sont stockés dans votre navigateur.
+                      Pour une sécurité totale et transférer vos données sur un autre appareil, vous pouvez exporter ou importer un fichier JSON.
+                    </p>
+
+                    <button
+                      onClick={handleExportJSON}
+                      className="w-full p-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-2xl font-bold text-xs flex items-center justify-center gap-2"
+                    >
+                      <Icons.Download className="w-4 h-4 text-emerald-600" />
+                      <span>Télécharger ma sauvegarde (Export JSON)</span>
+                    </button>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Restaurer depuis un fichier JSON :</label>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportJSON}
+                        className="w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200"
+                      />
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <button
+                        onClick={() => {
+                          if (confirm('Voulez-vous réinitialiser avec les données originales du Legend Tour ?')) {
+                            setEntries(INITIAL_ENTRIES);
+                            saveEntriesToStorage(INITIAL_ENTRIES);
+                            showToast('Données originales réinitialisées');
+                            setBackupModalOpen(false);
+                          }
+                        }}
+                        className="text-xs text-rose-600 hover:underline"
+                      >
+                        Réinitialiser avec les données par défaut de la tournée
+                      </button>
+                    </div>
+                  </div>
+                  <button onClick={() => setBackupModalOpen(false)} className="w-full py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 rounded-xl">Fermer</button>
                 </div>
               </div>
             )}
